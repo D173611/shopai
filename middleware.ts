@@ -2,9 +2,7 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 export async function middleware(request: NextRequest) {
-  let supabaseResponse = NextResponse.next({
-    request,
-  })
+  let supabaseResponse = NextResponse.next()
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -15,12 +13,7 @@ export async function middleware(request: NextRequest) {
           return request.cookies.getAll()
         },
         setAll(cookiesToSet) {
-          // ❌ REMOVE THIS LINE - Next 15 doesn't allow it
-          // cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
-
-          supabaseResponse = NextResponse.next({
-            request,
-          })
+          // ✅ FIXED: Only set on response, never on request
           cookiesToSet.forEach(({ name, value, options }) =>
             supabaseResponse.cookies.set(name, value, options)
           )
@@ -52,7 +45,7 @@ export async function middleware(request: NextRequest) {
     .eq('owner_id', user.id)
     .maybeSingle()
 
-    if (!shop &&!pathname.startsWith('/signup')) {
+    if (!shop && !pathname.startsWith('/signup')) {
       return NextResponse.redirect(new URL('/signup', request.url))
     }
   }

@@ -2,18 +2,28 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 export async function middleware(request: NextRequest) {
-  let supabaseResponse = NextResponse.next({ request })
+  let supabaseResponse = NextResponse.next({
+    request,
+  })
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
-        getAll() { return request.cookies.getAll() },
+        getAll() {
+          return request.cookies.getAll()
+        },
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
-          supabaseResponse = NextResponse.next({ request })
-          cookiesToSet.forEach(({ name, value, options }) => supabaseResponse.cookies.set(name, value, options))
+          // ❌ REMOVE THIS LINE - Next 15 doesn't allow it
+          // cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
+
+          supabaseResponse = NextResponse.next({
+            request,
+          })
+          cookiesToSet.forEach(({ name, value, options }) =>
+            supabaseResponse.cookies.set(name, value, options)
+          )
         },
       },
     }
@@ -33,15 +43,14 @@ export async function middleware(request: NextRequest) {
         await supabase.auth.signOut()
         return NextResponse.redirect(new URL('/login?error=no-shop', request.url))
       }
-      // ✅ FIXED: redirect to cashier-login not cashier/orders
       return NextResponse.redirect(new URL(`/${slug}/cashier-login`, request.url))
     }
 
     const { data: shop } = await supabase
-     .from('shops')
-     .select('id')
-     .eq('owner_id', user.id)
-     .maybeSingle()
+    .from('shops')
+    .select('id')
+    .eq('owner_id', user.id)
+    .maybeSingle()
 
     if (!shop &&!pathname.startsWith('/signup')) {
       return NextResponse.redirect(new URL('/signup', request.url))
@@ -49,14 +58,12 @@ export async function middleware(request: NextRequest) {
   }
 
   // 2. Protect cashier routes - must be logged in
-  // ✅ FIXED: Check for /cashier-login instead of /cashier/
   if (pathname.includes('/cashier-login')) {
     if (!user) {
       const slug = pathname.split('/')[1]
       if (!slug || slug === 'undefined') {
         return NextResponse.redirect(new URL('/login?error=invalid-shop', request.url))
       }
-      // ✅ FIXED: redirect to cashier-login
       return NextResponse.redirect(new URL(`/${slug}/cashier-login`, request.url))
     }
   }
@@ -71,15 +78,14 @@ export async function middleware(request: NextRequest) {
         await supabase.auth.signOut()
         return NextResponse.redirect(new URL('/login?error=no-shop', request.url))
       }
-      // ✅ FIXED: redirect to cashier-login not cashier/orders
       return NextResponse.redirect(new URL(`/${slug}/cashier-login`, request.url))
     }
 
     const { data: shop } = await supabase
-     .from('shops')
-     .select('id')
-     .eq('owner_id', user.id)
-     .maybeSingle()
+    .from('shops')
+    .select('id')
+    .eq('owner_id', user.id)
+    .maybeSingle()
 
     if (shop) {
       return NextResponse.redirect(new URL('/dashboard', request.url))

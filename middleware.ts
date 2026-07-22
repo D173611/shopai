@@ -13,7 +13,6 @@ export async function middleware(request: NextRequest) {
           return request.cookies.getAll()
         },
         setAll(cookiesToSet) {
-          // ✅ FIXED: Only set on response, never on request
           cookiesToSet.forEach(({ name, value, options }) =>
             supabaseResponse.cookies.set(name, value, options)
           )
@@ -22,7 +21,9 @@ export async function middleware(request: NextRequest) {
     }
   )
 
-  const { data: { user } } = await supabase.auth.getUser()
+  // FIX 1: Use getSession() instead of getUser() - won't throw
+  const { data: { session } } = await supabase.auth.getSession()
+  const user = session?.user
   const { pathname } = request.nextUrl
 
   // 1. Protect /dashboard - owner only
@@ -33,24 +34,17 @@ export async function middleware(request: NextRequest) {
     if (role === 'cashier') {
       const slug = user.user_metadata?.shop_slug
       if (!slug) {
-        await supabase.auth.signOut()
+        // Don't signOut in middleware - just redirect
         return NextResponse.redirect(new URL('/login?error=no-shop', request.url))
       }
       return NextResponse.redirect(new URL(`/${slug}/cashier-login`, request.url))
     }
 
-    const { data: shop } = await supabase
-    .from('shops')
-    .select('id')
-    .eq('owner_id', user.id)
-    .maybeSingle()
-
-    if (!shop && !pathname.startsWith('/signup')) {
-      return NextResponse.redirect(new URL('/signup', request.url))
-    }
+    // FIX 2: REMOVE DB QUERY - Do this check in the /dashboard page instead
+    // const { data: shop } = await supabase.from('shops')...
   }
 
-  // 2. Protect cashier routes - must be logged in
+  // 2. Protect cashier routes
   if (pathname.includes('/cashier-login')) {
     if (!user) {
       const slug = pathname.split('/')[1]
@@ -68,21 +62,14 @@ export async function middleware(request: NextRequest) {
     if (role === 'cashier') {
       const slug = user.user_metadata?.shop_slug
       if (!slug) {
-        await supabase.auth.signOut()
         return NextResponse.redirect(new URL('/login?error=no-shop', request.url))
       }
       return NextResponse.redirect(new URL(`/${slug}/cashier-login`, request.url))
     }
 
-    const { data: shop } = await supabase
-    .from('shops')
-    .select('id')
-    .eq('owner_id', user.id)
-    .maybeSingle()
-
-    if (shop) {
-      return NextResponse.redirect(new URL('/dashboard', request.url))
-    }
+    // FIX 2: REMOVE DB QUERY - Redirect all owners to dashboard
+    // Let the dashboard page check if shop exists
+    return NextResponse.redirect(new URL('/dashboard', request.url))
   }
 
   return supabaseResponse

@@ -4,9 +4,9 @@ import DynamicBg from '../../components/DynamicBg'
 export default async function SignupPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>
+  searchParams: Promise<{ error?: string; success?: string }>
 }) {
-  const { error } = await searchParams
+  const { error, success } = await searchParams
 
   return (
     <div className="relative min-h-screen flex items-center justify-center p-4 overflow-hidden">
@@ -23,6 +23,12 @@ export default async function SignupPage({
         {error && (
           <div className="mb-4 bg-rose-500/10 border border-rose-500/20 text-rose-300 rounded-xl p-3.5 text-xs font-medium">
             ⚠️ {error}
+          </div>
+        )}
+
+        {success && (
+          <div className="mb-4 bg-blue-500/10 border border-blue-500/20 text-blue-300 rounded-xl p-3.5 text-xs font-medium">
+            ✉️ Check your email. We sent a confirmation link to activate your account. Click it to log in. Check spam too.
           </div>
         )}
 

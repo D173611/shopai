@@ -37,5 +37,5 @@ export async function signup(formData: FormData) {
     return redirect(`/signup?error=${encodeURIComponent(shopError.message)}`)
   }
 
-  return redirect('/dashboard')
+  return redirect('/signup?success=true')
 }

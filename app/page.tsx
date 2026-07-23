@@ -10,14 +10,14 @@ export default function Home() {
       {/* Top Header Branding Banner Element */}
       <header className="w-full max-w-6xl py-6 flex justify-between items-center border-b border-white/10 backdrop-blur-xs z-10">
         <div className="flex items-center space-x-2.5">
-          <span className="bg-gradient-to-r from-blue-500 to-indigo-600 text-white font-black px-3.5 py-1.5 rounded-xl text-xl shadow-lg shadow-blue-500/20">
+          <span className="bg-gradient-to-r from-blue-500 to-indigo-600 text-white font-black px-3.5 py-1.5 rounded-xl text-lg shadow-lg shadow-blue-500/20">
             S-AI
           </span>
-          <span className="text-xl font-black tracking-tight text-white">
+          <span className="text-lg font-black tracking-tight text-white">
             ShopAI <span className="text-blue-400 font-medium text-xs bg-blue-500/10 px-2 py-0.5 rounded-md border border-blue-500/20 ml-1">Retail OS</span>
           </span>
         </div>
-        <Link href="/login" className="text-sm font-bold text-slate-300 hover:text-white transition bg-white/5 hover:bg-white/10 px-4 py-2 rounded-xl border border-white/10 backdrop-blur-md">
+        <Link href="/login" className="text-xs font-bold text-slate-300 hover:text-white transition bg-white/5 hover:bg-white/10 px-4 py-2 rounded-xl border border-white/10 backdrop-blur-md">
           Portal Log In
         </Link>
       </header>
@@ -29,11 +29,11 @@ export default function Home() {
           <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
         </div>
         
-        <h1 className="text-4xl sm:text-5xl md:text-6xl font-black tracking-tight text-white leading-tight">
+        <h1 className="text-3xl sm:text-4xl md:text-5xl font-black tracking-tight text-white leading-tight">
           Manage Your Branches, Staff & Sales with <span className="bg-clip-text text-transparent bg-gradient-to-r from-blue-400 via-indigo-300 to-purple-400">ShopAI</span>
         </h1>
         
-        <p className="text-base sm:text-lg text-slate-300 max-w-2xl mx-auto font-normal leading-relaxed">
+        <p className="text-sm sm:text-base text-slate-300 max-w-2xl mx-auto font-normal leading-relaxed">
           Cloud-based POS barcode scanning for your cashiers, multi-branch tracking for you, and automated e-commerce web storefronts that send orders straight to WhatsApp.
         </p>
 

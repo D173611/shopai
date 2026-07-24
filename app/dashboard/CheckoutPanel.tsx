@@ -55,10 +55,10 @@ export default function CheckoutPanel({
       if (user) {
         // CHANGE 'user_profiles' to your actual table name
         const { data } = await supabase
-        .from('user_profiles')
-        .select('shop_id')
-        .eq('id', user.id)
-        .single()
+       .from('user_profiles')
+       .select('shop_id')
+       .eq('id', user.id)
+       .single()
 
         if (data?.shop_id) setShopId(data.shop_id)
       }
@@ -134,10 +134,24 @@ export default function CheckoutPanel({
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [handleBarcodeScan])
 
+  // UPDATED FUNCTION - THIS FIXES "Access denied or not available"
   const startCameraScan = async () => {
     setIsScanning(true)
+
+    if (location.protocol!== 'https:' && location.hostname!== 'localhost') {
+      alert('Camera needs HTTPS. Deploy to Vercel or use https://localhost')
+      setIsScanning(false)
+      return
+    }
+
     try {
       const videoInputDevices = await codeReader.current.listVideoInputDevices()
+      if (videoInputDevices.length === 0) {
+        alert('No camera found. Close WhatsApp/Zoom if they are using camera')
+        setIsScanning(false)
+        return
+      }
+
       const selectedDeviceId = videoInputDevices[0]?.deviceId
 
       await codeReader.current.decodeFromVideoDevice(
@@ -150,9 +164,19 @@ export default function CheckoutPanel({
           }
         }
       )
-    } catch (err) {
+    } catch (err: any) {
       console.error(err)
-      alert('Camera access denied or not available')
+      if (err.name === 'NotAllowedError') {
+        alert('Camera BLOCKED.\n\nFix: Click 🔒 icon in address bar → Camera → Allow → Reload page')
+      } else if (err.name === 'NotFoundError') {
+        alert('No camera found on this device')
+      } else if (err.name === 'NotReadableError') {
+        alert('Camera is busy. Close other apps using it like Zoom/WhatsApp')
+      } else if (err.name === 'OverconstrainedError') {
+        alert('Camera does not meet requirements. Try a different device')
+      } else {
+        alert('Camera error: ' + err.message)
+      }
       setIsScanning(false)
     }
   }
@@ -211,7 +235,7 @@ export default function CheckoutPanel({
   const toggleProductForPrint = (product: Product) => {
     setSelectedProducts(prev =>
       prev.find(p => p.id === product.id)
-      ? prev.filter(p => p.id!== product.id)
+     ? prev.filter(p => p.id!== product.id)
         : [...prev, product]
     )
   }
@@ -224,7 +248,7 @@ export default function CheckoutPanel({
   const updateQuantity = (id: string, amount: number) => {
     setCart((prevCart) =>
       prevCart
-      .map((item) => {
+     .map((item) => {
           if (item.id === id) {
             const newQty = item.quantity + amount
             if (newQty > item.stock_quantity) {
@@ -235,7 +259,7 @@ export default function CheckoutPanel({
           }
           return item
         })
-      .filter((item) => item.quantity > 0)
+     .filter((item) => item.quantity > 0)
     )
   }
 

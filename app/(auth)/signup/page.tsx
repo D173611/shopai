@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, use } from 'react'
 import { signup } from './actions'
 import DynamicBg from '../../components/DynamicBg'
 
@@ -9,13 +9,15 @@ export default function SignupPage({
 }: {
   searchParams: Promise<{ error?: string; success?: string }>
 }) {
+  const { error, success } = use(searchParams)
+
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [clientError, setClientError] = useState<string | null>(null)
 
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     if (password !== confirmPassword) {
       e.preventDefault()
       setClientError('Passwords do not match')

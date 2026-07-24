@@ -1,12 +1,28 @@
+'use client'
+
+import { useState } from 'react'
 import { signup } from './actions'
 import DynamicBg from '../../components/DynamicBg'
 
-export default async function SignupPage({
+export default function SignupPage({
   searchParams,
 }: {
   searchParams: Promise<{ error?: string; success?: string }>
 }) {
-  const { error, success } = await searchParams
+  const [showPassword, setShowPassword] = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
+  const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [clientError, setClientError] = useState<string | null>(null)
+
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    if (password !== confirmPassword) {
+      e.preventDefault()
+      setClientError('Passwords do not match')
+      return
+    }
+    setClientError(null)
+  }
 
   return (
     <div className="relative min-h-screen flex items-center justify-center p-4 overflow-hidden">
@@ -20,6 +36,12 @@ export default async function SignupPage({
           <p className="text-slate-300 text-xs mt-1">Start tracking your inventory and managing cashiers</p>
         </div>
 
+        {clientError && (
+          <div className="mb-4 bg-rose-500/10 border border-rose-500/20 text-rose-300 rounded-xl p-3.5 text-xs font-medium">
+            ⚠️ {clientError}
+          </div>
+        )}
+
         {error && (
           <div className="mb-4 bg-rose-500/10 border border-rose-500/20 text-rose-300 rounded-xl p-3.5 text-xs font-medium">
             ⚠️ {error}
@@ -32,14 +54,28 @@ export default async function SignupPage({
           </div>
         )}
 
-        <form action={signup} className="space-y-4">
+        <form action={signup} onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-[10px] font-bold text-slate-300 uppercase tracking-wider mb-1">Business Email</label>
             <input name="email" type="email" required placeholder="owner@company.com" className="w-full border border-white/10 rounded-xl p-3 bg-white/5 outline-none focus:border-blue-500 text-sm transition" />
           </div>
           <div>
             <label className="block text-[10px] font-bold text-slate-300 uppercase tracking-wider mb-1">Secure Password</label>
-            <input name="password" type="password" required placeholder="Minimum 6 characters" className="w-full border border-white/10 rounded-xl p-3 bg-white/5 outline-none focus:border-blue-500 text-sm transition" />
+            <div className="relative">
+              <input name="password" type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)} required placeholder="Minimum 6 characters" className="w-full border border-white/10 rounded-xl p-3 pr-10 bg-white/5 outline-none focus:border-blue-500 text-sm transition" />
+              <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-xs font-semibold">
+                {showPassword ? 'Hide' : 'Show'}
+              </button>
+            </div>
+          </div>
+          <div>
+            <label className="block text-[10px] font-bold text-slate-300 uppercase tracking-wider mb-1">Confirm Password</label>
+            <div className="relative">
+              <input type={showConfirmPassword ? 'text' : 'password'} value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required placeholder="Re-enter password" className="w-full border border-white/10 rounded-xl p-3 pr-10 bg-white/5 outline-none focus:border-blue-500 text-sm transition" />
+              <button type="button" onClick={() => setShowConfirmPassword(!showConfirmPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-xs font-semibold">
+                {showConfirmPassword ? 'Hide' : 'Show'}
+              </button>
+            </div>
           </div>
           <div>
             <label className="block text-[10px] font-bold text-slate-300 uppercase tracking-wider mb-1">Official Company Name</label>

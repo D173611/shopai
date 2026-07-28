@@ -8,44 +8,25 @@ export default async function ShopPage({
   params: Promise<{ slug: string }> 
 }) {
   const { slug } = await params
-  console.log('=== DEBUG START ===')
-  console.log('1. URL slug:', slug)
-  
   const supabase = await createClient()
 
+  // 1. Fetch shop data (gets coordinates: shop_lat, shop_lng)
   const { data: shop, error: shopError } = await supabase
     .from('shops')
     .select('*')
     .eq('slug', slug)
     .maybeSingle()
 
-  console.log('2. DB returned shop:', shop)
-  console.log('3. DB error:', shopError)
-  console.log('=== DEBUG END ===')
-
-  if (shopError) {
+  if (shopError || !shop) {
     return (
       <div className="min-h-screen bg-black text-white p-8">
-        <h1 className="text-2xl font-bold text-red-500">DATABASE ERROR</h1>
-        <pre className="mt-4 bg-slate-800 p-4 rounded">Code: {shopError.code}</pre>
-        <pre className="mt-2 bg-slate-800 p-4 rounded">Message: {shopError.message}</pre>
-        <pre className="mt-2 bg-slate-800 p-4 rounded">Details: {shopError.details}</pre>
-        <pre className="mt-2 bg-slate-800 p-4 rounded">Hint: {shopError.hint}</pre>
-        <p className="mt-4">Looking for slug: {slug}</p>
-      </div>
-    )
-  }
-
-  if (!shop) {
-    return (
-      <div className="min-h-screen bg-black text-white p-8">
-        <h1 className="text-2xl font-bold text-yellow-500">SHOP NOT FOUND</h1>
+        <h1 className="text-2xl font-bold text-red-500">SHOP NOT FOUND</h1>
         <p className="mt-4">No shop exists with slug: "{slug}"</p>
-        <p className="mt-2">Check your shops table.</p>
       </div>
     )
   }
 
+  // 2. Fetch products
   const { data: products } = await supabase
     .from('products')
     .select('*')
@@ -53,14 +34,22 @@ export default async function ShopPage({
     .gt('stock_quantity', 0)
     .limit(100)
 
-  // NEW: Fetch shop settings for delivery price
+  // 3. Fetch price_per_km from the shop_settings table using shop_id
   const { data: settings } = await supabase
     .from('shop_settings')
-    .select('price_per_km')
+    .select('price_per_km, delivery_enabled')
     .eq('shop_id', shop.id)
-    .single()
+    .maybeSingle()
 
-  const pricePerKm = settings?.price_per_km || 1000 // default 1000 if not set
+  // 4. Merge everything cleanly for the client component
+  const enhancedShop = {
+    ...shop,
+    latitude: shop.shop_lat,      // Mapped from public.shops
+    longitude: shop.shop_lng,    // Mapped from public.shops
+    price_per_km: settings?.price_per_km ?? 1000 // Pulled live from public.shop_settings
+  }
 
-  return <ShopClient shop={shop} products={products || []} pricePerKm={pricePerKm} />
+  const pricePerKm = settings?.price_per_km || 1000
+
+  return <ShopClient shop={enhancedShop} products={products || []} pricePerKm={pricePerKm} />
 }

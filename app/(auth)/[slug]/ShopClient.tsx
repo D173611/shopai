@@ -12,11 +12,13 @@ type Shop = {
   slug: string
   wallpaper_url?: string | null
   location?: string | null
+  latitude?: number | null // REAL SHOP LAT FROM DB / SETTINGS
+  longitude?: number | null // REAL SHOP LNG FROM DB / SETTINGS
   phone?: string | null
   whatsapp?: string | null
   payment_info?: string | null
   payment_methods?: PaymentMethod[] | null
-  price_per_km?: number | null // KEEP THIS FOR BACKWARD COMPAT
+  price_per_km?: number | null
 }
 
 type Product = {
@@ -35,15 +37,14 @@ type CartItem = Product & { qty: number }
 type ShopClientProps = {
   shop: Shop
   products: Product[]
-  pricePerKm: number // ADDED THIS - comes from shop_settings
+  pricePerKm: number
 }
 
-// CONFIG - CHANGE THESE
-const STORE_LAT = 0.3476; // YOUR SHOP LAT
-const STORE_LNG = 32.5825; // YOUR SHOP LNG
-const DEFAULT_PRICE_PER_KM = 1500; // UBER/FARAS FALLBACK IF SHOP DIDNT SET
+const DEFAULT_STORE_LAT = 0.3476; // KAMPALA FALLBACK
+const DEFAULT_STORE_LNG = 32.5825; // KAMPALA FALLBACK
+const DEFAULT_PRICE_PER_KM = 1500;
 
-export default function ShopClient({ shop, products, pricePerKm }: ShopClientProps) { // ADDED pricePerKm HERE
+export default function ShopClient({ shop, products, pricePerKm }: ShopClientProps) {
   const [search, setSearch] = useState('')
   const [cart, setCart] = useState<CartItem[]>([])
   const [showCheckout, setShowCheckout] = useState(false)
@@ -53,10 +54,12 @@ export default function ShopClient({ shop, products, pricePerKm }: ShopClientPro
   const [otherPaymentMethod, setOtherPaymentMethod] = useState('')
   const [showMap, setShowMap] = useState(false)
 
-  // NEW: USE SHOP PRICE FROM DB > SHOP TABLE > FALLBACK TO UBER/FARAS RATE
+  // SAFE COORDINATES RESOLUTION (Prioritizes DB settings passed onto shop object)
+  const STORE_LAT = shop.latitude ?? DEFAULT_STORE_LAT;
+  const STORE_LNG = shop.longitude ?? DEFAULT_STORE_LNG;
+
   const PRICE_PER_KM = pricePerKm || shop.price_per_km || DEFAULT_PRICE_PER_KM;
 
-  // NEW: DELIVERY STATE
   const [isPickup, setIsPickup] = useState(false)
   const [customerLat, setCustomerLat] = useState<number | null>(null)
   const [customerLng, setCustomerLng] = useState<number | null>(null)
@@ -66,7 +69,6 @@ export default function ShopClient({ shop, products, pricePerKm }: ShopClientPro
   const mapInstanceRef = useRef<any>(null)
   const markerRef = useRef<any>(null)
 
-  // NEW: LOCATION SEARCH STATE
   const [locationSearch, setLocationSearch] = useState('')
   const [searching, setSearching] = useState(false)
 
@@ -102,27 +104,33 @@ export default function ShopClient({ shop, products, pricePerKm }: ShopClientPro
     }
   }, [])
 
-  // INIT MAP
+  // INIT MAP - CLEANED UP RE-RENDER LOGIC TO PREVENT BREAKS
   useEffect(() => {
-    if (showMap && mapRef.current &&!mapInstanceRef.current && (window as any).L) {
+    if (showMap && mapRef.current && (window as any).L) {
       const L = (window as any).L
-      mapInstanceRef.current = L.map(mapRef.current).setView([STORE_LAT, STORE_LNG], 13)
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapInstanceRef.current)
-      L.marker([STORE_LAT, STORE_LNG]).addTo(mapInstanceRef.current).bindPopup("🏪 Your Store")
 
-      markerRef.current = L.marker([STORE_LAT, STORE_LNG], {draggable: true}).addTo(mapInstanceRef.current).bindPopup("📍 Drag me to your location")
+      if (!mapInstanceRef.current) {
+        mapInstanceRef.current = L.map(mapRef.current).setView([STORE_LAT, STORE_LNG], 13)
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapInstanceRef.current)
+        L.marker([STORE_LAT, STORE_LNG]).addTo(mapInstanceRef.current).bindPopup(`🏪 ${shop.name}`)
 
-      markerRef.current.on('dragend', () => {
-        const pos = markerRef.current.getLatLng()
-        setCustomerLat(pos.lat)
-        setCustomerLng(pos.lng)
-        const dist = getDistance(STORE_LAT, STORE_LNG, pos.lat, pos.lng)
-        setDistanceKm(dist)
-        setDeliveryFee(Math.round(dist * PRICE_PER_KM))
-        setOrderForm(prev => ({...prev, location: `${pos.lat.toFixed(5)}, ${pos.lng.toFixed(5)}`}))
-      })
+        markerRef.current = L.marker([STORE_LAT, STORE_LNG], {draggable: true}).addTo(mapInstanceRef.current).bindPopup("📍 Drag me to your location")
+
+        markerRef.current.on('dragend', () => {
+          const pos = markerRef.current.getLatLng()
+          setCustomerLat(pos.lat)
+          setCustomerLng(pos.lng)
+          const dist = getDistance(STORE_LAT, STORE_LNG, pos.lat, pos.lng)
+          setDistanceKm(dist)
+          setDeliveryFee(Math.round(dist * PRICE_PER_KM))
+          setOrderForm(prev => ({...prev, location: `${pos.lat.toFixed(5)}, ${pos.lng.toFixed(5)}`}))
+        })
+      } else {
+        // Update view if store coords change dynamically
+        mapInstanceRef.current.setView([STORE_LAT, STORE_LNG], 13)
+      }
     }
-  }, [showMap, PRICE_PER_KM])
+  }, [showMap, STORE_LAT, STORE_LNG, shop.name, PRICE_PER_KM])
 
   const getDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
     const R = 6371;
@@ -134,12 +142,10 @@ export default function ShopClient({ shop, products, pricePerKm }: ShopClientPro
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
   }
 
-  // NEW: GEOCODE FUNCTION - FIXED TO USE OUR API PROXY
   const geocodeLocation = async (query: string) => {
     if(!query.trim()) return
     setSearching(true)
     try {
-      // CHANGED THIS LINE ONLY - no more CORS
       const res = await fetch(`/api/geocode?q=${encodeURIComponent(query)}`)
       const data = await res.json()
 
@@ -154,13 +160,13 @@ export default function ShopClient({ shop, products, pricePerKm }: ShopClientPro
         setDistanceKm(dist)
         setDeliveryFee(Math.round(dist * PRICE_PER_KM))
 
-        if(markerRef.current) {
+        if(markerRef.current && mapInstanceRef.current) {
           markerRef.current.setLatLng([lat, lng])
           mapInstanceRef.current.setView([lat, lng], 16)
         }
         setToast(`Location found`)
       } else {
-        alert('Location not found. Try "Kisementi, Kololo" or paste coordinates like 0.3476, 32.5825')
+        alert(`Location not found. Try entering a nearby landmark or coordinates like ${STORE_LAT}, ${STORE_LNG}`)
       }
     } catch(e) {
       console.error(e)
@@ -169,20 +175,19 @@ export default function ShopClient({ shop, products, pricePerKm }: ShopClientPro
     setSearching(false)
   }
 
-  // NEW: HANDLE COORDS PASTE
   const handleCoordsPaste = (val: string) => {
     const parts = val.split(',')
     if(parts.length === 2) {
       const lat = parseFloat(parts[0].trim())
       const lng = parseFloat(parts[1].trim())
-      if(!isNaN(lat) &&!isNaN(lng)) {
+      if(!isNaN(lat) && !isNaN(lng)) {
         setCustomerLat(lat)
         setCustomerLng(lng)
         setOrderForm(prev => ({...prev, location: `${lat}, ${lng}`}))
         const dist = getDistance(STORE_LAT, STORE_LNG, lat, lng)
         setDistanceKm(dist)
         setDeliveryFee(Math.round(dist * PRICE_PER_KM))
-        if(markerRef.current) {
+        if(markerRef.current && mapInstanceRef.current) {
           markerRef.current.setLatLng([lat, lng])
           mapInstanceRef.current.setView([lat, lng], 16)
         }
@@ -211,39 +216,37 @@ export default function ShopClient({ shop, products, pricePerKm }: ShopClientPro
       const exists = prev.find(p => p.id === product.id)
       setToast(`${product.name} added!`)
       if (exists) {
-        return prev.map(p => p.id === product.id? {...p, qty: p.qty + 1 } : p)
+        return prev.map(p => p.id === product.id ? {...p, qty: p.qty + 1 } : p)
       }
       return [...prev, {...product, qty: 1 }]
     })
   }
 
   const removeFromCart = (id: string) => {
-    setCart(prev => prev.filter(p => p.id!== id))
+    setCart(prev => prev.filter(p => p.id !== id))
   }
 
   const updateQty = (id: string, qty: number) => {
     if (qty <= 0) return removeFromCart(id)
-    setCart(prev => prev.map(p => p.id === id? {...p, qty } : p))
+    setCart(prev => prev.map(p => p.id === id ? {...p, qty } : p))
   }
 
   const itemsTotal = cart.reduce((sum, item) => sum + (item.retail_price || 0) * item.qty, 0)
   const totalItems = cart.reduce((sum, item) => sum + item.qty, 0)
   const grandTotal = itemsTotal + deliveryFee
 
-  // UPDATE 1: PAYMENT OPTIONAL ON PICKUP
   const validateAndConfirm = () => {
-    const finalPaymentMethod = orderForm.payment_method === 'Other'? otherPaymentMethod : orderForm.payment_method
+    const finalPaymentMethod = orderForm.payment_method === 'Other' ? otherPaymentMethod : orderForm.payment_method
 
-    if (!orderForm.name ||!orderForm.phone) {
+    if (!orderForm.name || !orderForm.phone) {
       alert('Please fill name and phone/whatsapp')
       return
     }
-    // Only require payment + location if it's delivery
-    if(!isPickup &&!finalPaymentMethod) {
+    if(!isPickup && !finalPaymentMethod) {
       alert('Please select payment method')
       return
     }
-    if(!isPickup &&!customerLat) {
+    if(!isPickup && !customerLat) {
       alert('Please search location or set pin on map')
       return
     }
@@ -252,8 +255,8 @@ export default function ShopClient({ shop, products, pricePerKm }: ShopClientPro
 
   const handleOrder = async () => {
     setSubmitting(true)
-    const finalPaymentMethod = orderForm.payment_method === 'Other'? otherPaymentMethod : orderForm.payment_method
-    const googleMapsLink = customerLat? `https://www.google.com/maps?q=${customerLat},${customerLng}` : null
+    const finalPaymentMethod = orderForm.payment_method === 'Other' ? otherPaymentMethod : orderForm.payment_method
+    const googleMapsLink = customerLat ? `https://www.google.com/maps?q=${customerLat},${customerLng}` : null
 
     const res = await fetch('/api/orders', {
       method: 'POST',
@@ -278,9 +281,9 @@ export default function ShopClient({ shop, products, pricePerKm }: ShopClientPro
         customer_lat: customerLat,
         customer_lng: customerLng,
         google_maps_link: googleMapsLink,
-        fulfillment_type: isPickup? 'pickup' : 'delivery',
+        fulfillment_type: isPickup ? 'pickup' : 'delivery',
         distance_km: distanceKm,
-        price_per_km_used: PRICE_PER_KM // NOW SAVES THE ACTUAL PRICE USED
+        price_per_km_used: PRICE_PER_KM
       })
     })
 
@@ -381,7 +384,7 @@ export default function ShopClient({ shop, products, pricePerKm }: ShopClientPro
                   <p className="text-lg font-bold text-slate-900 mb-2">UGX {(product.retail_price || 0).toLocaleString()}</p>
                   <button
                     onClick={() => addToCart(product)}
-                    className="w-full bg-white/20 backdrop-blur-xl text-slate-900 border-2 border-white/40 py-2 rounded-lg font-semibold hover:bg-white/30 active:scale-95 transition shadow-lg"
+                    className="w-full bg-white/25 backdrop-blur-xl text-slate-900 border-2 border-white/40 py-2 rounded-lg font-semibold hover:bg-white/40 active:scale-95 transition shadow-lg"
                   >
                     Add to Cart
                   </button>
@@ -395,13 +398,13 @@ export default function ShopClient({ shop, products, pricePerKm }: ShopClientPro
       {totalItems > 0 && (
         <button
           onClick={() => setShowCheckout(true)}
-          className="fixed bottom-6 right-6 bg-white/20 backdrop-blur-xl text-slate-900 border-2 border-white/40 px-6 py-3 rounded-full font-bold shadow-2xl hover:bg-white/30 active:scale-95 transition z-40"
+          className="fixed bottom-6 right-6 bg-white/30 backdrop-blur-xl text-slate-900 border-2 border-white/50 px-6 py-3 rounded-full font-bold shadow-2xl hover:bg-white/40 active:scale-95 transition z-40"
         >
           🛒 {totalItems} Items - UGX {grandTotal.toLocaleString()}
         </button>
       )}
 
-      {showCheckout &&!showConfirm && (
+      {showCheckout && !showConfirm && (
         <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4" onClick={() => setShowCheckout(false)}>
           <div className="bg-white rounded-2xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto shadow-2xl" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-4">
@@ -469,7 +472,6 @@ export default function ShopClient({ shop, products, pricePerKm }: ShopClientPro
                 I will pick up the order myself
               </label>
 
-              {/* UPDATED: LOCATION SEARCH + MAP */}
               {!isPickup && (
                 <div className="space-y-2">
                   <label className="text-sm font-semibold">Delivery Location *</label>
@@ -477,7 +479,7 @@ export default function ShopClient({ shop, products, pricePerKm }: ShopClientPro
                   <div className="flex gap-2">
                     <input
                       type="text"
-                      placeholder="Type: Ntinda, Kisementi... or paste 0.34, 32.58"
+                      placeholder="Type: Ntinda, Kisementi... or paste coords"
                       value={locationSearch}
                       onChange={e => {
                         setLocationSearch(e.target.value)
@@ -491,12 +493,12 @@ export default function ShopClient({ shop, products, pricePerKm }: ShopClientPro
                       disabled={searching}
                       className="bg-blue-600 text-white px-4 rounded-lg font-semibold disabled:bg-gray-400"
                     >
-                      {searching? '...' : 'Find'}
+                      {searching ? '...' : 'Find'}
                     </button>
                   </div>
 
                   <button type="button" onClick={() => setShowMap(!showMap)} className="w-full bg-slate-200 text-slate-900 py-2 rounded-lg text-sm font-semibold">
-                    📍 {showMap? 'Hide' : 'Or Drop Pin on Map'}
+                    📍 {showMap ? 'Hide Map' : 'Or Drop Pin on Map'}
                   </button>
                   {showMap && <div ref={mapRef} className="w-full h-[250px] rounded-lg border"></div>}
 
@@ -505,7 +507,7 @@ export default function ShopClient({ shop, products, pricePerKm }: ShopClientPro
                       <p className="font-semibold text-green-700">✅ Location Locked</p>
                       <p>Distance: {distanceKm.toFixed(2)} KM</p>
                       <p>Delivery: UGX {deliveryFee.toLocaleString()}</p>
-                      <a href={`https://www.google.com/maps?q=${customerLat},${customerLng}`} target="_blank" className="text-blue-600 underline">View on Google Maps</a>
+                      <a href={`https://www.google.com/maps?q=${customerLat},${customerLng}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">View on Google Maps</a>
                     </div>
                   )}
                 </div>
@@ -549,10 +551,10 @@ export default function ShopClient({ shop, products, pricePerKm }: ShopClientPro
             <div className="bg-slate-50 rounded-lg p-4 mb-4 text-sm space-y-1">
               <p><span className="font-semibold">Name:</span> {orderForm.name}</p>
               <p><span className="font-semibold">Phone:</span> {orderForm.phone}</p>
-              <p><span className="font-semibold">Fulfillment:</span> {isPickup? 'Pickup' : 'Delivery'}</p>
-              {customerLat && <p><span className="font-semibold">Location:</span> <a href={`https://www.google.com/maps?q=${customerLat},${customerLng}`} target="_blank" className="text-blue-600 underline">View on Map</a></p>}
+              <p><span className="font-semibold">Fulfillment:</span> {isPickup ? 'Pickup' : 'Delivery'}</p>
+              {customerLat && <p><span className="font-semibold">Location:</span> <a href={`https://www.google.com/maps?q=${customerLat},${customerLng}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">View on Map</a></p>}
               {!customerLat && <p><span className="font-semibold">Location:</span> Customer Pickup</p>}
-              <p><span className="font-semibold">Payment:</span> {orderForm.payment_method === 'Other'? otherPaymentMethod : orderForm.payment_method}</p>
+              <p><span className="font-semibold">Payment:</span> {orderForm.payment_method === 'Other' ? otherPaymentMethod : orderForm.payment_method}</p>
               {orderForm.transaction_id && <p><span className="font-semibold">Txn ID:</span> {orderForm.transaction_id}</p>}
             </div>
 
@@ -592,7 +594,7 @@ export default function ShopClient({ shop, products, pricePerKm }: ShopClientPro
                 disabled={submitting}
                 className="flex-1 bg-green-600 text-white py-3 rounded-lg font-bold disabled:bg-slate-400 hover:bg-green-700 active:scale-95 transition"
               >
-                {submitting? 'Placing...' : 'Confirm & Place Order'}
+                {submitting ? 'Placing...' : 'Confirm & Place Order'}
               </button>
             </div>
           </div>

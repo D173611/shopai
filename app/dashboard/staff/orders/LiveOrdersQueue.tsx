@@ -22,6 +22,9 @@ export type Order = {
   delivery_address: string
   customer_whatsapp: string
   total_amount: number | string
+  items_total?: number | string // NEW: for pickup total
+  delivery_fee?: number | string // NEW: for breakdown
+  fulfillment_type?: 'pickup' | 'delivery' // NEW: to know which total to show
   order_status: string
   locked_by_cashier_id: string | null
   locked_at: string | null
@@ -47,22 +50,13 @@ export default function LiveOrdersQueue({
   // Sync local state when serverOrders changes from real-time
   useEffect(() => {
     setLocalOrders(current => {
-      // Merge server orders with local state, preferring server data
-      // but keeping any local optimistic changes that haven't been confirmed yet
-      const serverOrderMap = new Map(serverOrders.map(o => [o.id, o]))
       const localOrderMap = new Map(current.map(o => [o.id, o]))
 
-      // Start with all server orders
       const merged: Order[] = serverOrders.map(serverOrder => {
         const localOrder = localOrderMap.get(serverOrder.id)
-
-        // If we don't have a local version, just use server
         if (!localOrder) return serverOrder
-
-        // If server says it's locked by me but local says pending, server wins
-        // If server says pending but local says processing, wait for server to confirm
-        // Real-time should be fast enough that this rarely matters
-        return serverOrder
+        // FIX: Keep local items so we don't lose them on realtime update
+        return {...serverOrder, items: localOrder.items }
       })
 
       return merged
@@ -75,7 +69,7 @@ export default function LiveOrdersQueue({
     setLocalOrders(current =>
       current.map(o =>
         o.id === orderId
-         ? {...o, order_status: 'processing', locked_by_cashier_id: currentUser.id, locked_at: new Date().toISOString() }
+       ? {...o, order_status: 'processing', locked_by_cashier_id: currentUser.id, locked_at: new Date().toISOString() }
           : o
       )
     )
@@ -85,8 +79,6 @@ export default function LiveOrdersQueue({
       console.log('4. SERVER ACTION RESPONSE:', res)
       if (res.error) {
         alert(res.error)
-        // Revert on error by refetching from server
-        // Real-time will fix it, but we could force refresh here if needed
       }
     })
   }
@@ -96,7 +88,7 @@ export default function LiveOrdersQueue({
     setLocalOrders(current =>
       current.map(o =>
         o.id === orderId
-         ? {...o, order_status: 'pending', locked_by_cashier_id: null, locked_at: null }
+       ? {...o, order_status: 'pending', locked_by_cashier_id: null, locked_at: null }
           : o
       )
     )
@@ -110,7 +102,7 @@ export default function LiveOrdersQueue({
     setLocalOrders(current =>
       current.map(o =>
         o.id === orderId
-         ? {...o, order_status: 'cancelled', locked_by_cashier_id: null, cancelled_by: currentUser.id, cancelled_at: new Date().toISOString() }
+       ? {...o, order_status: 'cancelled', locked_by_cashier_id: null, cancelled_by: currentUser.id, cancelled_at: new Date().toISOString() }
           : o
       )
     )
@@ -130,13 +122,13 @@ export default function LiveOrdersQueue({
   }
 
   async function handleComplete(orderId: string) {
-    if (!confirm('Mark this order as delivered? Stock will be reduced.')) return
-    if (!confirm('Are you absolutely sure? This will deduct items from inventory and cannot be undone.')) return
+    // FIX: Removed double confirm
+    if (!confirm('Mark this order as delivered? Stock will be reduced and this cannot be undone.')) return
 
     setLocalOrders(current =>
       current.map(o =>
         o.id === orderId
-         ? {...o, order_status: 'delivered' }
+       ? {...o, order_status: 'delivered' }
           : o
       )
     )
@@ -160,20 +152,31 @@ export default function LiveOrdersQueue({
         return (
           <div key={order.id} className={`p-6 rounded-2xl border-2 backdrop-blur-xl transition shadow-2xl space-y-4 ${
             order.locked_by_cashier_id
-             ? 'bg-amber-50/95 border-amber-400'
+           ? 'bg-amber-50/95 border-amber-400'
               : 'bg-white/95 border-slate-300'
           } ${isPending? 'opacity-70' : ''}`}>
+
+            {/* UPDATED HEADER WITH SMART TOTAL */}
             <div className="flex justify-between items-start gap-4">
               <div className="flex-1">
-                <span className={`text-sm px-3 py-1 rounded-full font-black uppercase tracking-wide ${
-                  order.order_status === 'processing'? 'bg-amber-200 text-amber-900' :
-                  order.order_status === 'cancelled'? 'bg-rose-200 text-rose-900' :
-                  order.order_status === 'delivered'? 'bg-green-200 text-green-900' :
-                  'bg-blue-200 text-blue-900'
-                }`}>
-                  {order.order_status}
-                </span>
-                <h3 className="font-black text-slate-900 text-xl mt-3">{order.customer_name}</h3>
+                <div className="flex gap-2 items-center mb-2">
+                  <span className={`text-sm px-3 py-1 rounded-full font-black uppercase tracking-wide ${
+                    order.order_status === 'processing'? 'bg-amber-200 text-amber-900' :
+                    order.order_status === 'cancelled'? 'bg-rose-200 text-rose-900' :
+                    order.order_status === 'delivered'? 'bg-green-200 text-green-900' :
+                    'bg-blue-200 text-blue-900'
+                  }`}>
+                    {order.order_status}
+                  </span>
+                  {order.fulfillment_type === 'pickup' && (
+                    <span className="text-xs bg-green-200 text-green-900 px-2 py-1 rounded-full font-bold">📦 PICKUP</span>
+                  )}
+                  {order.fulfillment_type === 'delivery' && (
+                    <span className="text-xs bg-blue-200 text-blue-900 px-2 py-1 rounded-full font-bold">🚚 DELIVERY</span>
+                  )}
+                </div>
+
+                <h3 className="font-black text-slate-900 text-xl mt-2">{order.customer_name}</h3>
                 <p className="text-sm text-slate-800 font-semibold mt-2">📍 {order.delivery_address}</p>
                 <p className="text-sm text-slate-800 font-semibold">💬 {order.customer_whatsapp}</p>
                 {order.payment_method && (
@@ -184,7 +187,21 @@ export default function LiveOrdersQueue({
                 )}
                 <p className="text-xs text-slate-600 mt-2 font-medium">{new Date(order.created_at).toLocaleString()}</p>
               </div>
-              <span className="text-xl font-black text-slate-900 font-mono">UGX {Number(order.total_amount).toLocaleString()}</span>
+
+              <div className="text-right">
+                <span className="text-xl font-black text-slate-900 font-mono">
+                  UGX {
+                    order.fulfillment_type === 'pickup'
+                    ? Number(order.items_total || order.total_amount).toLocaleString() // Pickup = Items only
+                      : Number(order.total_amount).toLocaleString() // Delivery = Items + Delivery
+                  }
+                </span>
+                {order.fulfillment_type === 'delivery' && Number(order.delivery_fee) > 0 && (
+                  <div className="text-xs text-gray-500 mt-1">
+                    Items: {Number(order.items_total).toLocaleString()} + Del: {Number(order.delivery_fee).toLocaleString()}
+                  </div>
+                )}
+              </div>
             </div>
 
             {order.items && order.items.length > 0 && (
@@ -194,7 +211,7 @@ export default function LiveOrdersQueue({
                   const itemName = item.product_name || item.name || 'Unnamed item'
                   const itemQty = item.quantity || item.qty || 1
                   return (
-                    <div key={idx} className="flex items-center gap-4 bg-white p-3 rounded-lg border border-slate-200">
+                    <div key={idx} className="flex items-center gap-4 bg-white p-3 rounded-lg border-slate-200">
                       {item.image_url? (
                         <Image
                           src={item.image_url}

@@ -53,5 +53,14 @@ export default async function ShopPage({
     .gt('stock_quantity', 0)
     .limit(100)
 
-  return <ShopClient shop={shop} products={products || []} />
+  // NEW: Fetch shop settings for delivery price
+  const { data: settings } = await supabase
+    .from('shop_settings')
+    .select('price_per_km')
+    .eq('shop_id', shop.id)
+    .single()
+
+  const pricePerKm = settings?.price_per_km || 1000 // default 1000 if not set
+
+  return <ShopClient shop={shop} products={products || []} pricePerKm={pricePerKm} />
 }

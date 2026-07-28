@@ -21,19 +21,26 @@ export async function POST(request: NextRequest) {
       tax_amount,
       total,
       cash_received,
-      change_given
+      change_given,
+      // NEW FIELDS FROM SHOPCLIENT
+      items_total,
+      delivery_fee,
+      customer_lat,
+      customer_lng,
+      google_maps_link,
+      fulfillment_type,
+      distance_km,
+      price_per_km_used
     } = body
 
-    if (!name || !phone || !location || !items?.length) {
+    if (!name || !phone || !items?.length) {
       return NextResponse.json(
-        { error: 'Missing required fields' },
+        { error: 'Missing required fields: name, phone, items' },
         { status: 400 }
       )
     }
 
-    // Accept ANY payment method - just clean it up
     const cleanPaymentMethod = payment_method?.toString().trim()
-
     if (!cleanPaymentMethod) {
       return NextResponse.json(
         { error: 'Payment method is required' },
@@ -41,9 +48,17 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // For pickup, location can be empty
+    if(fulfillment_type !== 'pickup' && !customer_lat) {
+      return NextResponse.json(
+        { error: 'Delivery location required' },
+        { status: 400 }
+      )
+    }
+
     console.log('--- ORDER DEBUG ---')
-    console.log('Payment method received:', payment_method)
-    console.log('Payment method saved:', cleanPaymentMethod)
+    console.log('Payment method:', cleanPaymentMethod)
+    console.log('Fulfillment:', fulfillment_type)
 
     const orderItems = items.map((item: any) => ({
       product_id: item.id,
@@ -58,20 +73,29 @@ export async function POST(request: NextRequest) {
       user_id: user_id || null,
       customer_name: name,
       customer_whatsapp: phone,
-      delivery_address: location,
-      subtotal: subtotal || null,
+      delivery_address: location || null, // can be lat,lng or text
+      subtotal: items_total || subtotal || null,
       tax_amount: tax_amount || null,
       total_amount: total,
+      delivery_fee: delivery_fee || 0,
       order_status: 'pending',
       locked_by_cashier_id: null,
       locked_at: null,
       cancelled_by: null,
       cancelled_at: null,
-      payment_method: cleanPaymentMethod, // Saves "Airtel Money", "MTN MoMo", whatever
+      payment_method: cleanPaymentMethod,
       transaction_id: transaction_id || null,
       cash_received: cash_received || null,
       change_given: change_given || null,
-      items: orderItems
+      items: orderItems,
+      
+      // NEW COLUMNS
+      customer_lat: customer_lat || null,
+      customer_lng: customer_lng || null,
+      google_maps_link: google_maps_link || null,
+      fulfillment_type: fulfillment_type || 'delivery',
+      distance_km: distance_km || 0,
+      price_per_km_used: price_per_km_used || 0
     }
 
     const { data, error } = await supabase

@@ -14,9 +14,11 @@ export default function OrdersClient({
 }) {
   const [orders, setOrders] = useState<Order[]>(initialOrders)
   const [shopId, setShopId] = useState<string | null>(null)
+  const [pricePerKm, setPricePerKm] = useState<number>(1000) // 1. NEW STATE
+  const [saving, setSaving] = useState(false) // 2. NEW STATE
   const supabase = createClient()
 
-  // 1. Get cashier's shop_id first
+  // 1. Get cashier's shop_id AND shop settings
   useEffect(() => {
     async function getShop() {
       const { data: staffMember } = await supabase
@@ -26,10 +28,33 @@ export default function OrdersClient({
         .eq('role', 'cashier')
         .maybeSingle()
       
-      if (staffMember?.shop_id) setShopId(staffMember.shop_id)
+      if (staffMember?.shop_id) {
+        setShopId(staffMember.shop_id)
+
+        // 3. NEW: Fetch price_per_km from shop_settings
+        const { data: settings } = await supabase
+          .from('shop_settings')
+          .select('price_per_km')
+          .eq('shop_id', staffMember.shop_id)
+          .single()
+        
+        if (settings) setPricePerKm(settings.price_per_km)
+      }
     }
     getShop()
   }, [user.id, supabase])
+
+  // 4. NEW: Save price per km function
+  async function savePrice() {
+    if (!shopId) return
+    setSaving(true)
+    await supabase.from('shop_settings').upsert({
+      shop_id: shopId,
+      price_per_km: pricePerKm
+    })
+    setSaving(false)
+    alert('Price per KM saved!')
+  }
 
   // 2. Real-time with shop filter - KEEP ITEMS ON UPDATE
   useEffect(() => {
@@ -48,7 +73,6 @@ export default function OrdersClient({
           console.log('REALTIME PAYLOAD:', payload.eventType, (payload.new as Order)?.id || (payload.old as Order)?.id)
 
           if (payload.eventType === 'INSERT') {
-            // Payload has no items, so fetch the full order
             const { data: fullOrder } = await supabase
               .from('orders')
               .select(`
@@ -84,7 +108,6 @@ export default function OrdersClient({
                 
                 if (!stillVisible) return null
                 
-                // Merge but KEEP EXISTING ITEMS since payload.new doesn't have them
                 return { ...order, ...updatedOrder, items: order.items } as Order
               }).filter(Boolean) as Order[]
             )
@@ -103,7 +126,30 @@ export default function OrdersClient({
 
   return (
     <div className="min-h-screen p-6 space-y-6">
-      <header className="flex justify-between items-center bg-white/95 backdrop-blur-xl p-4 rounded-xl shadow-xl border border-white/50">
+      
+      {/* 5. NEW: PRICE SETTING BOX ON TOP */}
+      <div className="bg-white/95 backdrop-blur-xl p-4 rounded-xl shadow-xl border-white/50">
+        <h2 className="font-bold text-slate-800">🚚 Delivery Settings</h2>
+        <div className="flex items-center gap-3 mt-2">
+          <label className="text-sm font-medium text-slate-600">Price per KM UGX:</label>
+          <input 
+            type="number" 
+            value={pricePerKm}
+            onChange={(e) => setPricePerKm(Number(e.target.value))}
+            className="border rounded-lg px-3 py-2 w-32"
+          />
+          <button 
+            onClick={savePrice}
+            disabled={saving}
+            className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 disabled:opacity-50"
+          >
+            {saving ? 'Saving...' : 'Save'}
+          </button>
+        </div>
+        <p className="text-xs text-slate-500 mt-1">This price will be used to calculate customer delivery fee</p>
+      </div>
+
+      <header className="flex justify-between items-center bg-white/95 backdrop-blur-xl p-4 rounded-xl shadow-xl border-white/50">
         <div>
           <h1 className="text-xl font-black text-slate-800">📡 All Orders</h1>
           <p className="text-xs text-slate-500">Showing orders for your shop</p>

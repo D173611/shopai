@@ -3,16 +3,25 @@ import { useState } from 'react'
 import { updateShopSettings } from './actions'
 
 type PaymentMethod = { name: string, details: string }
+
 type Shop = {
   id: string
   name: string
   slug: string
   location?: string | null
+  shop_lat?: number | null
+  shop_lng?: number | null
   contact_info?: string | null
   payment_methods?: PaymentMethod[] | null
 }
 
-export default function SettingsForm({ shop }: { shop: Shop }) {
+export default function SettingsForm({
+  shop,
+  price_per_km
+}: {
+  shop: Shop,
+  price_per_km: number
+}) {
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>(
     shop.payment_methods?.length? shop.payment_methods : [{ name: '', details: '' }]
   )
@@ -32,11 +41,13 @@ export default function SettingsForm({ shop }: { shop: Shop }) {
   }
 
   return (
-    <form action={updateShopSettings} className="space-y-6 bg-slate-900/80 backdrop-blur-md p-6 rounded-2xl border border-slate-700/50 shadow-xl">
+    <form
+      action={updateShopSettings}
+      className="space-y-6 bg-slate-900 bg-opacity-80 backdrop-blur-md p-6 rounded-2xl border border-slate-700/50 shadow-xl"
+    >
       <input type="hidden" name="shopId" value={shop.id} />
       <input type="hidden" name="shopSlug" value={shop.slug} />
 
-      {/* Hidden field - this is what actually gets submitted */}
       <input
         type="hidden"
         name="payment_methods"
@@ -52,9 +63,57 @@ export default function SettingsForm({ shop }: { shop: Shop }) {
           name="location"
           defaultValue={shop.location || ''}
           placeholder="e.g. Kisementi, Kampala"
-          className="w-full text-sm p-2.5 border border-slate-700 rounded-xl bg-slate-800/80 outline-none focus:border-blue-500 focus:bg-slate-800 transition text-white placeholder:text-slate-400"
+          className="w-full text-sm p-2.5 border-slate-700 rounded-xl bg-slate-800 bg-opacity-80 outline-none focus:border-blue-500 focus:bg-slate-800 transition text-white placeholder:text-slate-400"
         />
         <p className="text-xs text-slate-400 mt-1">This shows at the top of your shop page</p>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="block text-xs font-bold text-slate-200 uppercase tracking-wider mb-1">
+            Shop Latitude
+          </label>
+          <input
+            type="number"
+            step="any"
+            name="shop_lat"
+            defaultValue={shop.shop_lat?? ''}
+            placeholder="0.347596"
+            className="w-full text-sm p-2.5 border border-slate-700 rounded-xl bg-slate-800 bg-opacity-80 outline-none focus:border-blue-500 focus:bg-slate-800 transition text-white placeholder:text-slate-400"
+          />
+        </div>
+
+        <div>
+          <label className="block text-xs font-bold text-slate-200 uppercase tracking-wider mb-1">
+            Shop Longitude
+          </label>
+          <input
+            type="number"
+            step="any"
+            name="shop_lng"
+            defaultValue={shop.shop_lng?? ''}
+            placeholder="32.582520"
+            className="w-full text-sm p-2.5 border border-slate-700 rounded-xl bg-slate-800 bg-opacity-80 outline-none focus:border-blue-500 focus:bg-slate-800 transition text-white placeholder:text-slate-400"
+          />
+        </div>
+      </div>
+      <p className="text-xs text-slate-400 -mt-2">
+        Used to calculate delivery distance. Get from Google Maps &gt; Right click &gt; What's here?
+      </p>
+
+      {/* PRICE PER KM INPUT */}
+      <div>
+        <label className="block text-xs font-bold text-slate-200 uppercase tracking-wider mb-1">
+          Price Per KM (UGX)
+        </label>
+        <input
+          type="number"
+          name="price_per_km"
+          defaultValue={price_per_km}
+          placeholder="e.g. 1000"
+          className="w-full text-sm p-2.5 border-slate-700 rounded-xl bg-slate-800 bg-opacity-80 outline-none focus:border-blue-500 focus:bg-slate-800 transition text-white placeholder:text-slate-400"
+        />
+        <p className="text-xs text-slate-400 mt-1">This is what customers pay per kilometer for delivery</p>
       </div>
 
       <div>
@@ -65,8 +124,8 @@ export default function SettingsForm({ shop }: { shop: Shop }) {
           type="text"
           name="contact_info"
           defaultValue={shop.contact_info || ''}
-          placeholder="e.g. WhatsApp: +256 700 000000"
-          className="w-full text-sm p-2.5 border border-slate-700 rounded-xl bg-slate-800/80 outline-none focus:border-blue-500 focus:bg-slate-800 transition text-white placeholder:text-slate-400"
+          placeholder="e.g. WhatsApp: +256 700 000"
+          className="w-full text-sm p-2.5 border-slate-700 rounded-xl bg-slate-800 bg-opacity-80 outline-none focus:border-blue-500 focus:bg-slate-800 transition text-white placeholder:text-slate-400"
         />
         <p className="text-xs text-slate-400 mt-1">Phone/email customers can reach you on</p>
       </div>
@@ -79,7 +138,7 @@ export default function SettingsForm({ shop }: { shop: Shop }) {
           <button
             type="button"
             onClick={addPaymentMethod}
-            className="text-xs bg-slate-700/80 hover:bg-slate-600/80 text-slate-200 px-3 py-1.5 rounded-lg font-bold"
+            className="text-xs bg-slate-700 bg-opacity-80 hover:bg-slate-600 hover:bg-opacity-80 text-slate-200 px-3 py-1.5 rounded-lg font-bold"
           >
             + Add Method
           </button>
@@ -93,14 +152,14 @@ export default function SettingsForm({ shop }: { shop: Shop }) {
                 value={pm.name}
                 onChange={(e) => updatePaymentMethod(idx, 'name', e.target.value)}
                 placeholder="e.g. MTN Mobile Money"
-                className="w-full text-sm p-2.5 border border-slate-700 rounded-xl bg-slate-800/80 outline-none focus:border-blue-500 focus:bg-slate-800 transition text-white placeholder:text-slate-400"
+                className="w-full text-sm p-2.5 border-slate-700 rounded-xl bg-slate-800 bg-opacity-80 outline-none focus:border-blue-500 focus:bg-slate-800 transition text-white placeholder:text-slate-400"
               />
               <input
                 type="text"
                 value={pm.details}
                 onChange={(e) => updatePaymentMethod(idx, 'details', e.target.value)}
                 placeholder="e.g. 0772 123456 - John Doe"
-                className="w-full text-sm p-2.5 border border-slate-700 rounded-xl bg-slate-800/80 outline-none focus:border-blue-500 focus:bg-slate-800 transition text-white placeholder:text-slate-400"
+                className="w-full text-sm p-2.5 border-slate-700 rounded-xl bg-slate-800 bg-opacity-80 outline-none focus:border-blue-500 focus:bg-slate-800 transition text-white placeholder:text-slate-400"
               />
             </div>
             {paymentMethods.length > 1 && (

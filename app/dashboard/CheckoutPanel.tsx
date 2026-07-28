@@ -41,26 +41,35 @@ export default function CheckoutPanel({
   const [barcodeSize, setBarcodeSize] = useState<BarcodeSize>('medium')
   const [shopId, setShopId] = useState<string | null>(propShopId || null) // ← New
 
+  // NEW: DELIVERY STUFF
+  const [isPickup, setIsPickup] = useState(false)
+  const [customerLat, setCustomerLat] = useState<number | null>(null)
+  const [customerLng, setCustomerLng] = useState<number | null>(null)
+  const [pricePerKm] = useState(1000) // CHANGE THIS TO YOUR RATE
+  const [storeLat] = useState(0.3476) // CHANGE TO YOUR SHOP LAT
+  const [storeLng] = useState(32.5825) // CHANGE TO YOUR SHOP LNG
+
   const searchInputRef = useRef<HTMLInputElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
   const supabase = createClient()
   const codeReader = useRef(new BrowserMultiFormatReader())
 
-  // ← NEW: Auto-fetch shopId if cashier side didn't pass it
+  // ← NEW: Auto-fetch shopId if cashier side didn't pass it - FIXED ERRORS
   useEffect(() => {
     const getShopId = async () => {
       if (propShopId) return // Admin side already passed it
 
-      const { data: { user } } = await supabase.auth.getUser()
+      const { data } = await supabase.auth.getUser() // FIXED
+      const user = data.user // FIXED
+      
       if (user) {
-        // CHANGE 'user_profiles' to your actual table name
-        const { data } = await supabase
-       .from('user_profiles')
-       .select('shop_id')
-       .eq('id', user.id)
-       .single()
+        const { data: profile } = await supabase
+         .from('user_profiles')
+         .select('shop_id')
+         .eq('id', user.id)
+         .single()
 
-        if (data?.shop_id) setShopId(data.shop_id)
+        if (profile?.shop_id) setShopId(profile.shop_id)
       }
     }
     getShopId()
@@ -157,7 +166,7 @@ export default function CheckoutPanel({
       await codeReader.current.decodeFromVideoDevice(
         selectedDeviceId,
         videoRef.current!,
-        (result, err) => {
+        (result) => {
           if (result) {
             handleBarcodeScan(result.getText())
             stopCameraScan()
@@ -235,7 +244,7 @@ export default function CheckoutPanel({
   const toggleProductForPrint = (product: Product) => {
     setSelectedProducts(prev =>
       prev.find(p => p.id === product.id)
-     ? prev.filter(p => p.id!== product.id)
+   ? prev.filter(p => p.id!== product.id)
         : [...prev, product]
     )
   }
@@ -274,7 +283,17 @@ export default function CheckoutPanel({
 
   const subtotal = cart.reduce((sum, item) => sum + item.retail_price * item.quantity, 0)
   const tax = subtotal * 0.18
-  const totalAmount = subtotal + tax
+
+  // NEW: Distance + Delivery calc
+  const getDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+    const R = 6371; const dLat = (lat2-lat1) * Math.PI / 180; const dLon = (lon2-lon1) * Math.PI / 180;
+    const a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon/2) * Math.sin(dLon/2);
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  }
+  const distanceKm = customerLat && customerLng? getDistance(storeLat, storeLng, customerLat, customerLng) : 0
+  const deliveryFee = isPickup? 0 : Math.round(distanceKm * pricePerKm)
+
+  const totalAmount = subtotal + tax + deliveryFee
   const cashAmount = parseFloat(cashTendered) || 0
   const changeDue = cashAmount > totalAmount? cashAmount - totalAmount : 0
 
@@ -291,9 +310,15 @@ export default function CheckoutPanel({
       alert("Insufficient cash provided to cover transaction costs!")
       return
     }
+    if(!isPickup &&!customerLat) {
+      alert("Please set delivery location or tick Pickup")
+      return
+    }
 
     setIsProcessing(true)
     try {
+      const googleMapsLink = customerLat? `https://www.google.com/maps?q=${customerLat},${customerLng}` : null
+
       const { data, error } = await supabase.rpc('create_pos_order', {
         p_items: cart.map(item => ({
           product_id: item.id,
@@ -307,13 +332,19 @@ export default function CheckoutPanel({
         p_cashier_name: cashierName,
         p_cash_received: cashAmount,
         p_shop_id: shopId,
-        p_tax_amount: tax
+        p_tax_amount: tax,
+        // NEW 4 PARAMS
+        p_customer_lat: customerLat,
+        p_customer_lng: customerLng,
+        p_google_maps_link: googleMapsLink,
+        p_fulfillment_type: isPickup? 'pickup' : 'delivery'
       })
 
       if (error) throw error
 
       alert(`Sale Processed! Order: ${data.order_number}. Total: UGX ${totalAmount.toLocaleString()}. Change: UGX ${changeDue.toLocaleString()}`)
       clearCart()
+      setCustomerLat(null); setCustomerLng(null); setIsPickup(false)
 
     } catch (err: any) {
       console.error('RPC Error:', err)
@@ -324,7 +355,7 @@ export default function CheckoutPanel({
   }
 
   return (
-    <div className="w-full bg-white rounded-xl shadow-md border border-gray-100 p-6 my-6 grid grid-cols-1 lg:grid-cols-3 gap-6 text-black">
+    <div className="w-full bg-white rounded-xl shadow-md border-gray-100 p-6 my-6 grid grid-cols-1 lg:grid-cols-3 gap-6 text-black">
 
       {isScanning && (
         <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center">
@@ -338,7 +369,7 @@ export default function CheckoutPanel({
         </div>
       )}
 
-      <div className="lg:col-span-2 flex flex-col gap-4">
+      <div className="lg:col-span-2 flex-col gap-4">
         <div className="flex justify-between items-center border-b pb-3">
           <h2 className="text-xl font-bold tracking-tight text-gray-800">Live POS Terminal</h2>
           <span className="text-xs bg-emerald-100 text-emerald-800 px-2.5 py-1 rounded-full font-semibold">
@@ -450,7 +481,20 @@ export default function CheckoutPanel({
           </div>
         </div>
 
-        <div className="border-t pt-3 flex flex-col gap-2">
+        <div className="border-t pt-3 flex-col gap-2">
+          {/* NEW: PICKUP + LOCATION INPUTS */}
+          <label className="flex items-center gap-2 text-xs font-semibold">
+            <input type="checkbox" checked={isPickup} onChange={(e) => {setIsPickup(e.target.checked); if(e.target.checked){setCustomerLat(null); setCustomerLng(null)}}}/>
+            Customer Pickup
+          </label>
+          {!isPickup && (
+            <div className="flex gap-2">
+              <input type="number" step="any" placeholder="Customer Lat" value={customerLat || ''} onChange={e => setCustomerLat(e.target.value? Number(e.target.value) : null)} className="w-1/2 p-1.5 border rounded text-xs"/>
+              <input type="number" step="any" placeholder="Customer Lng" value={customerLng || ''} onChange={e => setCustomerLng(e.target.value? Number(e.target.value) : null)} className="w-1/2 p-1.5 border rounded text-xs"/>
+            </div>
+          )}
+          {customerLat && <p className="text-[10px] text-gray-500">Distance: {distanceKm.toFixed(2)} KM</p>}
+
           <div className="flex justify-between text-xs text-gray-500">
             <span>Subtotal</span>
             <span>UGX {subtotal.toLocaleString()}</span>
@@ -458,6 +502,10 @@ export default function CheckoutPanel({
           <div className="flex justify-between text-xs text-gray-500">
             <span>VAT (18%)</span>
             <span>UGX {tax.toLocaleString()}</span>
+          </div>
+          <div className="flex justify-between text-xs text-gray-500">
+            <span>Delivery</span>
+            <span>UGX {deliveryFee.toLocaleString()}</span>
           </div>
           <div className="flex justify-between text-sm font-bold text-gray-800 border-b pb-2 mb-2">
             <span>Grand Total</span>
@@ -482,9 +530,9 @@ export default function CheckoutPanel({
 
           <button
             onClick={handleCheckout}
-            disabled={cart.length === 0 || isProcessing || cashAmount < totalAmount ||!shopId}
+            disabled={cart.length === 0 || isProcessing || cashAmount < totalAmount ||!shopId || (!isPickup &&!customerLat)}
             className={`w-full py-3 rounded-lg text-white font-bold text-sm shadow transition tracking-wide ${
-              cart.length === 0 || isProcessing || cashAmount < totalAmount ||!shopId? 'bg-gray-300 cursor-not-allowed' : 'bg-emerald-500 hover:bg-emerald-600'
+              cart.length === 0 || isProcessing || cashAmount < totalAmount ||!shopId || (!isPickup &&!customerLat)? 'bg-gray-300 cursor-not-allowed' : 'bg-emerald-500 hover:bg-emerald-600'
             }`}
           >
             {isProcessing? 'Processing...' :!shopId? 'Loading shop...' : 'Complete Sale & Log Transaction'}

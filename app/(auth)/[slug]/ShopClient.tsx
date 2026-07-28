@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import ProductImage from '../../dashboard/ProductImage'
 
 type PaymentMethod = { name: string, details: string }
@@ -16,6 +16,7 @@ type Shop = {
   whatsapp?: string | null
   payment_info?: string | null
   payment_methods?: PaymentMethod[] | null
+  price_per_km?: number | null // KEEP THIS FOR BACKWARD COMPAT
 }
 
 type Product = {
@@ -34,9 +35,15 @@ type CartItem = Product & { qty: number }
 type ShopClientProps = {
   shop: Shop
   products: Product[]
+  pricePerKm: number // ADDED THIS - comes from shop_settings
 }
 
-export default function ShopClient({ shop, products }: ShopClientProps) {
+// CONFIG - CHANGE THESE
+const STORE_LAT = 0.3476; // YOUR SHOP LAT
+const STORE_LNG = 32.5825; // YOUR SHOP LNG
+const DEFAULT_PRICE_PER_KM = 1500; // UBER/FARAS FALLBACK IF SHOP DIDNT SET
+
+export default function ShopClient({ shop, products, pricePerKm }: ShopClientProps) { // ADDED pricePerKm HERE
   const [search, setSearch] = useState('')
   const [cart, setCart] = useState<CartItem[]>([])
   const [showCheckout, setShowCheckout] = useState(false)
@@ -44,6 +51,25 @@ export default function ShopClient({ shop, products }: ShopClientProps) {
   const [submitting, setSubmitting] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
   const [otherPaymentMethod, setOtherPaymentMethod] = useState('')
+  const [showMap, setShowMap] = useState(false)
+
+  // NEW: USE SHOP PRICE FROM DB > SHOP TABLE > FALLBACK TO UBER/FARAS RATE
+  const PRICE_PER_KM = pricePerKm || shop.price_per_km || DEFAULT_PRICE_PER_KM;
+
+  // NEW: DELIVERY STATE
+  const [isPickup, setIsPickup] = useState(false)
+  const [customerLat, setCustomerLat] = useState<number | null>(null)
+  const [customerLng, setCustomerLng] = useState<number | null>(null)
+  const [distanceKm, setDistanceKm] = useState(0)
+  const [deliveryFee, setDeliveryFee] = useState(0)
+  const mapRef = useRef<HTMLDivElement>(null)
+  const mapInstanceRef = useRef<any>(null)
+  const markerRef = useRef<any>(null)
+
+  // NEW: LOCATION SEARCH STATE
+  const [locationSearch, setLocationSearch] = useState('')
+  const [searching, setSearching] = useState(false)
+
   const [orderForm, setOrderForm] = useState({
     name: '',
     phone: '',
@@ -58,6 +84,123 @@ export default function ShopClient({ shop, products }: ShopClientProps) {
       return () => clearTimeout(timer)
     }
   }, [toast])
+
+  // LOAD LEAFLET
+  useEffect(() => {
+    if (!document.getElementById('leaflet-css')) {
+      const link = document.createElement('link')
+      link.id = 'leaflet-css'
+      link.rel = 'stylesheet'
+      link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'
+      document.head.appendChild(link)
+    }
+    if (!document.getElementById('leaflet-js')) {
+      const script = document.createElement('script')
+      script.id = 'leaflet-js'
+      script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'
+      document.body.appendChild(script)
+    }
+  }, [])
+
+  // INIT MAP
+  useEffect(() => {
+    if (showMap && mapRef.current &&!mapInstanceRef.current && (window as any).L) {
+      const L = (window as any).L
+      mapInstanceRef.current = L.map(mapRef.current).setView([STORE_LAT, STORE_LNG], 13)
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapInstanceRef.current)
+      L.marker([STORE_LAT, STORE_LNG]).addTo(mapInstanceRef.current).bindPopup("🏪 Your Store")
+
+      markerRef.current = L.marker([STORE_LAT, STORE_LNG], {draggable: true}).addTo(mapInstanceRef.current).bindPopup("📍 Drag me to your location")
+
+      markerRef.current.on('dragend', () => {
+        const pos = markerRef.current.getLatLng()
+        setCustomerLat(pos.lat)
+        setCustomerLng(pos.lng)
+        const dist = getDistance(STORE_LAT, STORE_LNG, pos.lat, pos.lng)
+        setDistanceKm(dist)
+        setDeliveryFee(Math.round(dist * PRICE_PER_KM))
+        setOrderForm(prev => ({...prev, location: `${pos.lat.toFixed(5)}, ${pos.lng.toFixed(5)}`}))
+      })
+    }
+  }, [showMap, PRICE_PER_KM])
+
+  const getDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+    const R = 6371;
+    const dLat = (lat2-lat1) * Math.PI / 180;
+    const dLon = (lon2-lon1) * Math.PI / 180;
+    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+              Math.sin(dLon/2) * Math.sin(dLon/2);
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  }
+
+  // NEW: GEOCODE FUNCTION - FIXED TO USE OUR API PROXY
+  const geocodeLocation = async (query: string) => {
+    if(!query.trim()) return
+    setSearching(true)
+    try {
+      // CHANGED THIS LINE ONLY - no more CORS
+      const res = await fetch(`/api/geocode?q=${encodeURIComponent(query)}`)
+      const data = await res.json()
+
+      if(data.length > 0) {
+        const lat = parseFloat(data[0].lat)
+        const lng = parseFloat(data[0].lon)
+        setCustomerLat(lat)
+        setCustomerLng(lng)
+        setOrderForm(prev => ({...prev, location: data[0].display_name}))
+
+        const dist = getDistance(STORE_LAT, STORE_LNG, lat, lng)
+        setDistanceKm(dist)
+        setDeliveryFee(Math.round(dist * PRICE_PER_KM))
+
+        if(markerRef.current) {
+          markerRef.current.setLatLng([lat, lng])
+          mapInstanceRef.current.setView([lat, lng], 16)
+        }
+        setToast(`Location found`)
+      } else {
+        alert('Location not found. Try "Kisementi, Kololo" or paste coordinates like 0.3476, 32.5825')
+      }
+    } catch(e) {
+      console.error(e)
+      alert('Search failed')
+    }
+    setSearching(false)
+  }
+
+  // NEW: HANDLE COORDS PASTE
+  const handleCoordsPaste = (val: string) => {
+    const parts = val.split(',')
+    if(parts.length === 2) {
+      const lat = parseFloat(parts[0].trim())
+      const lng = parseFloat(parts[1].trim())
+      if(!isNaN(lat) &&!isNaN(lng)) {
+        setCustomerLat(lat)
+        setCustomerLng(lng)
+        setOrderForm(prev => ({...prev, location: `${lat}, ${lng}`}))
+        const dist = getDistance(STORE_LAT, STORE_LNG, lat, lng)
+        setDistanceKm(dist)
+        setDeliveryFee(Math.round(dist * PRICE_PER_KM))
+        if(markerRef.current) {
+          markerRef.current.setLatLng([lat, lng])
+          mapInstanceRef.current.setView([lat, lng], 16)
+        }
+      }
+    }
+  }
+
+  const handlePickupToggle = (val: boolean) => {
+    setIsPickup(val)
+    if(val) {
+      setCustomerLat(null)
+      setCustomerLng(null)
+      setDistanceKm(0)
+      setDeliveryFee(0)
+      setShowMap(false)
+      setLocationSearch('')
+    }
+  }
 
   const filtered = products.filter(p =>
     p.name.toLowerCase().includes(search.toLowerCase())
@@ -83,14 +226,25 @@ export default function ShopClient({ shop, products }: ShopClientProps) {
     setCart(prev => prev.map(p => p.id === id? {...p, qty } : p))
   }
 
-  const total = cart.reduce((sum, item) => sum + (item.retail_price || 0) * item.qty, 0)
+  const itemsTotal = cart.reduce((sum, item) => sum + (item.retail_price || 0) * item.qty, 0)
   const totalItems = cart.reduce((sum, item) => sum + item.qty, 0)
+  const grandTotal = itemsTotal + deliveryFee
 
+  // UPDATE 1: PAYMENT OPTIONAL ON PICKUP
   const validateAndConfirm = () => {
     const finalPaymentMethod = orderForm.payment_method === 'Other'? otherPaymentMethod : orderForm.payment_method
 
-    if (!orderForm.name ||!orderForm.phone ||!orderForm.location ||!finalPaymentMethod) {
-      alert('Please fill name, phone/whatsapp, location and payment method')
+    if (!orderForm.name ||!orderForm.phone) {
+      alert('Please fill name and phone/whatsapp')
+      return
+    }
+    // Only require payment + location if it's delivery
+    if(!isPickup &&!finalPaymentMethod) {
+      alert('Please select payment method')
+      return
+    }
+    if(!isPickup &&!customerLat) {
+      alert('Please search location or set pin on map')
       return
     }
     setShowConfirm(true)
@@ -98,8 +252,8 @@ export default function ShopClient({ shop, products }: ShopClientProps) {
 
   const handleOrder = async () => {
     setSubmitting(true)
-
     const finalPaymentMethod = orderForm.payment_method === 'Other'? otherPaymentMethod : orderForm.payment_method
+    const googleMapsLink = customerLat? `https://www.google.com/maps?q=${customerLat},${customerLng}` : null
 
     const res = await fetch('/api/orders', {
       method: 'POST',
@@ -118,7 +272,15 @@ export default function ShopClient({ shop, products }: ShopClientProps) {
           qty: i.qty,
           image_url: i.ai_enhanced_image_url || i.image_url
         })),
-        total
+        total: grandTotal,
+        items_total: itemsTotal,
+        delivery_fee: deliveryFee,
+        customer_lat: customerLat,
+        customer_lng: customerLng,
+        google_maps_link: googleMapsLink,
+        fulfillment_type: isPickup? 'pickup' : 'delivery',
+        distance_km: distanceKm,
+        price_per_km_used: PRICE_PER_KM // NOW SAVES THE ACTUAL PRICE USED
       })
     })
 
@@ -130,6 +292,11 @@ export default function ShopClient({ shop, products }: ShopClientProps) {
       setShowConfirm(false)
       setOrderForm({ name: '', phone: '', location: '', payment_method: '', transaction_id: '' })
       setOtherPaymentMethod('')
+      setIsPickup(false)
+      setCustomerLat(null)
+      setCustomerLng(null)
+      setDeliveryFee(0)
+      setLocationSearch('')
     } else {
       const data = await res.json()
       alert(`Failed to place order: ${data.error || 'Unknown error'}`)
@@ -154,7 +321,7 @@ export default function ShopClient({ shop, products }: ShopClientProps) {
         )}
 
         <div className="max-w-6xl mx-auto">
-          <div className="bg-white/95 shadow-xl rounded-2xl p-4 mb-6 border border-white/50">
+          <div className="bg-white/95 shadow-xl rounded-2xl p-4 mb-6 border-white/50">
             <div className="flex items-center gap-4 mb-3">
               {shop.logo_url && <img src={shop.logo_url} className="w-16 h-16 rounded-full object-cover border-2 border-slate-200 shadow-md" alt={shop.name} />}
               <div>
@@ -171,15 +338,16 @@ export default function ShopClient({ shop, products }: ShopClientProps) {
                 </a>
               )}
               {shop.payment_info && <div>💳 {shop.payment_info}</div>}
+              <div className="text-xs text-gray-500">Delivery: UGX {PRICE_PER_KM.toLocaleString()}/KM</div>
             </div>
           </div>
 
           {shop.payment_methods && shop.payment_methods.length > 0 && (
-            <div className="bg-white/95 shadow-xl rounded-2xl p-4 mb-6 border border-white/50">
+            <div className="bg-white/95 shadow-xl rounded-2xl p-4 mb-6 border-white/50">
               <h3 className="font-bold text-slate-900 mb-3 text-base">💳 Payment Methods Accepted</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {shop.payment_methods.map((pm, idx) => (
-                  <div key={idx} className="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                  <div key={idx} className="bg-slate-50 p-3 rounded-xl border-slate-200">
                     <span className="font-bold text-slate-900 text-sm">{pm.name}</span>
                     <p className="text-slate-700 text-sm mt-1">{pm.details}</p>
                   </div>
@@ -198,7 +366,7 @@ export default function ShopClient({ shop, products }: ShopClientProps) {
 
           <div className="columns-2 md:columns-3 lg:columns-4 gap-4">
             {filtered.map(product => (
-              <div key={product.id} className="mb-4 break-inside-avoid bg-white/95 rounded-xl shadow-xl overflow-hidden flex flex-col hover:shadow-2xl transition-shadow">
+              <div key={product.id} className="mb-4 break-inside-avoid bg-white/95 rounded-xl shadow-xl overflow-hidden flex-col hover:shadow-2xl transition-shadow">
                 <div className="relative w-full [&>img]:w-full [&>img]:h-auto [&>img]:block">
                   <ProductImage
                     src={product.ai_enhanced_image_url || product.image_url}
@@ -208,7 +376,7 @@ export default function ShopClient({ shop, products }: ShopClientProps) {
                     hasAiImage={product.has_ai_image}
                   />
                 </div>
-                <div className="p-3 flex flex-col">
+                <div className="p-3 flex-col">
                   <h3 className="font-semibold text-sm line-clamp-2 mb-1 text-slate-900">{product.name}</h3>
                   <p className="text-lg font-bold text-slate-900 mb-2">UGX {(product.retail_price || 0).toLocaleString()}</p>
                   <button
@@ -229,7 +397,7 @@ export default function ShopClient({ shop, products }: ShopClientProps) {
           onClick={() => setShowCheckout(true)}
           className="fixed bottom-6 right-6 bg-white/20 backdrop-blur-xl text-slate-900 border-2 border-white/40 px-6 py-3 rounded-full font-bold shadow-2xl hover:bg-white/30 active:scale-95 transition z-40"
         >
-          🛒 {totalItems} Items - UGX {total.toLocaleString()}
+          🛒 {totalItems} Items - UGX {grandTotal.toLocaleString()}
         </button>
       )}
 
@@ -280,11 +448,68 @@ export default function ShopClient({ shop, products }: ShopClientProps) {
               ))}
             </div>
 
-            <div className="text-xl font-bold mb-4 border-t pt-3">Total: UGX {total.toLocaleString()}</div>
+            <div className="text-xl font-bold mb-4 border-t pt-3">
+              <div className="flex justify-between text-sm font-normal">
+                <span>Items:</span> <span>UGX {itemsTotal.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between text-sm font-normal">
+                <span>Delivery @UGX {PRICE_PER_KM}/KM:</span> <span>UGX {deliveryFee.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between mt-1">
+                <span>Total:</span> <span>UGX {grandTotal.toLocaleString()}</span>
+              </div>
+            </div>
+
             <div className="space-y-3">
               <input type="text" placeholder="Your Name *" value={orderForm.name} onChange={e => setOrderForm({...orderForm, name: e.target.value })} className="w-full p-3 border rounded-lg" />
               <input type="text" placeholder="Phone *" value={orderForm.phone} onChange={e => setOrderForm({...orderForm, phone: e.target.value })} className="w-full p-3 border rounded-lg" />
-              <input type="text" placeholder="Location *" value={orderForm.location} onChange={e => setOrderForm({...orderForm, location: e.target.value })} className="w-full p-3 border rounded-lg" />
+
+              <label className="flex items-center gap-2 text-sm font-semibold">
+                <input type="checkbox" checked={isPickup} onChange={e => handlePickupToggle(e.target.checked)} />
+                I will pick up the order myself
+              </label>
+
+              {/* UPDATED: LOCATION SEARCH + MAP */}
+              {!isPickup && (
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold">Delivery Location *</label>
+
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="Type: Ntinda, Kisementi... or paste 0.34, 32.58"
+                      value={locationSearch}
+                      onChange={e => {
+                        setLocationSearch(e.target.value)
+                        if(e.target.value.includes(',')) handleCoordsPaste(e.target.value)
+                      }}
+                      className="flex-1 p-3 border rounded-lg"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => geocodeLocation(locationSearch)}
+                      disabled={searching}
+                      className="bg-blue-600 text-white px-4 rounded-lg font-semibold disabled:bg-gray-400"
+                    >
+                      {searching? '...' : 'Find'}
+                    </button>
+                  </div>
+
+                  <button type="button" onClick={() => setShowMap(!showMap)} className="w-full bg-slate-200 text-slate-900 py-2 rounded-lg text-sm font-semibold">
+                    📍 {showMap? 'Hide' : 'Or Drop Pin on Map'}
+                  </button>
+                  {showMap && <div ref={mapRef} className="w-full h-[250px] rounded-lg border"></div>}
+
+                  {customerLat && (
+                    <div className="text-xs bg-green-50 p-2 rounded border-green-200">
+                      <p className="font-semibold text-green-700">✅ Location Locked</p>
+                      <p>Distance: {distanceKm.toFixed(2)} KM</p>
+                      <p>Delivery: UGX {deliveryFee.toLocaleString()}</p>
+                      <a href={`https://www.google.com/maps?q=${customerLat},${customerLng}`} target="_blank" className="text-blue-600 underline">View on Google Maps</a>
+                    </div>
+                  )}
+                </div>
+              )}
 
               <select value={orderForm.payment_method} onChange={e => setOrderForm({...orderForm, payment_method: e.target.value })} className="w-full p-3 border rounded-lg bg-white">
                 <option value="">Select Payment Method *</option>
@@ -324,7 +549,9 @@ export default function ShopClient({ shop, products }: ShopClientProps) {
             <div className="bg-slate-50 rounded-lg p-4 mb-4 text-sm space-y-1">
               <p><span className="font-semibold">Name:</span> {orderForm.name}</p>
               <p><span className="font-semibold">Phone:</span> {orderForm.phone}</p>
-              <p><span className="font-semibold">Location:</span> {orderForm.location}</p>
+              <p><span className="font-semibold">Fulfillment:</span> {isPickup? 'Pickup' : 'Delivery'}</p>
+              {customerLat && <p><span className="font-semibold">Location:</span> <a href={`https://www.google.com/maps?q=${customerLat},${customerLng}`} target="_blank" className="text-blue-600 underline">View on Map</a></p>}
+              {!customerLat && <p><span className="font-semibold">Location:</span> Customer Pickup</p>}
               <p><span className="font-semibold">Payment:</span> {orderForm.payment_method === 'Other'? otherPaymentMethod : orderForm.payment_method}</p>
               {orderForm.transaction_id && <p><span className="font-semibold">Txn ID:</span> {orderForm.transaction_id}</p>}
             </div>
@@ -341,7 +568,17 @@ export default function ShopClient({ shop, products }: ShopClientProps) {
               </div>
             </div>
 
-            <div className="text-xl font-bold mb-6">Total: UGX {total.toLocaleString()}</div>
+            <div className="text-xl font-bold mb-6">
+              <div className="flex justify-between text-sm font-normal">
+                <span>Items:</span> <span>UGX {itemsTotal.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between text-sm font-normal">
+                <span>Delivery @UGX {PRICE_PER_KM}/KM:</span> <span>UGX {deliveryFee.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between mt-1">
+                <span>Total:</span> <span>UGX {grandTotal.toLocaleString()}</span>
+              </div>
+            </div>
 
             <div className="flex gap-3">
               <button

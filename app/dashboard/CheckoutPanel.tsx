@@ -17,7 +17,7 @@ interface CartItem {
 
 interface CheckoutPanelProps {
   products: Product[]
-  shopId?: string // ← Made optional
+  shopId?: string 
   slug: string
   cashierId: string
   cashierName: string
@@ -39,28 +39,19 @@ export default function CheckoutPanel({
   const [isScanning, setIsScanning] = useState(false)
   const [selectedProducts, setSelectedProducts] = useState<Product[]>([])
   const [barcodeSize, setBarcodeSize] = useState<BarcodeSize>('medium')
-  const [shopId, setShopId] = useState<string | null>(propShopId || null) // ← New
-
-  // NEW: DELIVERY STUFF
-  const [isPickup, setIsPickup] = useState(false)
-  const [customerLat, setCustomerLat] = useState<number | null>(null)
-  const [customerLng, setCustomerLng] = useState<number | null>(null)
-  const [pricePerKm] = useState(1000) // CHANGE THIS TO YOUR RATE
-  const [storeLat] = useState(0.3476) // CHANGE TO YOUR SHOP LAT
-  const [storeLng] = useState(32.5825) // CHANGE TO YOUR SHOP LNG
+  const [shopId, setShopId] = useState<string | null>(propShopId || null)
 
   const searchInputRef = useRef<HTMLInputElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
   const supabase = createClient()
   const codeReader = useRef(new BrowserMultiFormatReader())
 
-  // ← NEW: Auto-fetch shopId if cashier side didn't pass it - FIXED ERRORS
   useEffect(() => {
     const getShopId = async () => {
-      if (propShopId) return // Admin side already passed it
+      if (propShopId) return 
 
-      const { data } = await supabase.auth.getUser() // FIXED
-      const user = data.user // FIXED
+      const { data } = await supabase.auth.getUser() 
+      const user = data.user 
       
       if (user) {
         const { data: profile } = await supabase
@@ -89,7 +80,7 @@ export default function CheckoutPanel({
           return prevCart
         }
         return prevCart.map((item) =>
-          item.id === product.id? {...item, quantity: item.quantity + 1 } : item
+          item.id === product.id ? {...item, quantity: item.quantity + 1 } : item
         )
       }
       return [...prevCart, {
@@ -143,11 +134,10 @@ export default function CheckoutPanel({
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [handleBarcodeScan])
 
-  // UPDATED FUNCTION - THIS FIXES "Access denied or not available"
   const startCameraScan = async () => {
     setIsScanning(true)
 
-    if (location.protocol!== 'https:' && location.hostname!== 'localhost') {
+    if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
       alert('Camera needs HTTPS. Deploy to Vercel or use https://localhost')
       setIsScanning(false)
       return
@@ -196,7 +186,7 @@ export default function CheckoutPanel({
   }
 
   const generateBarcodePDF = () => {
-    const productsToPrint = selectedProducts.length > 0? selectedProducts : products.filter(p => p.barcode)
+    const productsToPrint = selectedProducts.length > 0 ? selectedProducts : products.filter(p => p.barcode)
 
     if (productsToPrint.length === 0) {
       alert('No products with barcodes selected')
@@ -218,7 +208,7 @@ export default function CheckoutPanel({
     const cellH = pageHeight / config.rows
 
     productsToPrint.forEach((product, idx) => {
-      if (idx % (config.cols * config.rows) === 0 && idx!== 0) doc.addPage()
+      if (idx % (config.cols * config.rows) === 0 && idx !== 0) doc.addPage()
 
       const posOnPage = idx % (config.cols * config.rows)
       const row = Math.floor(posOnPage / config.cols)
@@ -244,7 +234,7 @@ export default function CheckoutPanel({
   const toggleProductForPrint = (product: Product) => {
     setSelectedProducts(prev =>
       prev.find(p => p.id === product.id)
-   ? prev.filter(p => p.id!== product.id)
+       ? prev.filter(p => p.id !== product.id)
         : [...prev, product]
     )
   }
@@ -273,7 +263,7 @@ export default function CheckoutPanel({
   }
 
   const removeFromCart = (id: string) => {
-    setCart((prevCart) => prevCart.filter((item) => item.id!== id))
+    setCart((prevCart) => prevCart.filter((item) => item.id !== id))
   }
 
   const clearCart = () => {
@@ -281,21 +271,9 @@ export default function CheckoutPanel({
     setCashTendered('')
   }
 
-  const subtotal = cart.reduce((sum, item) => sum + item.retail_price * item.quantity, 0)
-  const tax = subtotal * 0.18
-
-  // NEW: Distance + Delivery calc
-  const getDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
-    const R = 6371; const dLat = (lat2-lat1) * Math.PI / 180; const dLon = (lon2-lon1) * Math.PI / 180;
-    const a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon/2) * Math.sin(dLon/2);
-    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-  }
-  const distanceKm = customerLat && customerLng? getDistance(storeLat, storeLng, customerLat, customerLng) : 0
-  const deliveryFee = isPickup? 0 : Math.round(distanceKm * pricePerKm)
-
-  const totalAmount = subtotal + tax + deliveryFee
+  const totalAmount = cart.reduce((sum, item) => sum + item.retail_price * item.quantity, 0)
   const cashAmount = parseFloat(cashTendered) || 0
-  const changeDue = cashAmount > totalAmount? cashAmount - totalAmount : 0
+  const changeDue = cashAmount > totalAmount ? cashAmount - totalAmount : 0
 
   const handleCheckout = async () => {
     if (!shopId) {
@@ -310,15 +288,9 @@ export default function CheckoutPanel({
       alert("Insufficient cash provided to cover transaction costs!")
       return
     }
-    if(!isPickup &&!customerLat) {
-      alert("Please set delivery location or tick Pickup")
-      return
-    }
 
     setIsProcessing(true)
     try {
-      const googleMapsLink = customerLat? `https://www.google.com/maps?q=${customerLat},${customerLng}` : null
-
       const { data, error } = await supabase.rpc('create_pos_order', {
         p_items: cart.map(item => ({
           product_id: item.id,
@@ -332,19 +304,17 @@ export default function CheckoutPanel({
         p_cashier_name: cashierName,
         p_cash_received: cashAmount,
         p_shop_id: shopId,
-        p_tax_amount: tax,
-        // NEW 4 PARAMS
-        p_customer_lat: customerLat,
-        p_customer_lng: customerLng,
-        p_google_maps_link: googleMapsLink,
-        p_fulfillment_type: isPickup? 'pickup' : 'delivery'
+        p_tax_amount: 0,
+        p_customer_lat: null,
+        p_customer_lng: null,
+        p_google_maps_link: null,
+        p_fulfillment_type: 'pickup'
       })
 
       if (error) throw error
 
       alert(`Sale Processed! Order: ${data.order_number}. Total: UGX ${totalAmount.toLocaleString()}. Change: UGX ${changeDue.toLocaleString()}`)
       clearCart()
-      setCustomerLat(null); setCustomerLng(null); setIsPickup(false)
 
     } catch (err: any) {
       console.error('RPC Error:', err)
@@ -412,7 +382,7 @@ export default function CheckoutPanel({
         />
 
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 max-h-[400px] overflow-y-auto pr-1">
-          {filteredProducts.length === 0? (
+          {filteredProducts.length === 0 ? (
             <p className="col-span-full text-center text-gray-400 text-sm py-8">No products found.</p>
           ) : (
             filteredProducts.map((product) => (
@@ -430,7 +400,7 @@ export default function CheckoutPanel({
                   <div className="mt-3 flex w-full justify-between items-end">
                     <span className="text-xs font-bold text-blue-600">UGX {product.retail_price.toLocaleString()}</span>
                     <span className="text- bg-gray-100 px-1.5 py-0.5 rounded text-gray-500 group-hover:bg-blue-500 group-hover:text-white transition">
-                      {product.stock_quantity === 0? 'Out' : 'Add +'}
+                      {product.stock_quantity === 0 ? 'Out' : 'Add +'}
                     </span>
                   </div>
                 </button>
@@ -457,7 +427,7 @@ export default function CheckoutPanel({
           </div>
 
           <div className="flex flex-col gap-2 max-h-[220px] overflow-y-auto mb-4 pr-1">
-            {cart.length === 0? (
+            {cart.length === 0 ? (
               <div className="text-center py-12 text-gray-400 text-xs">Cart is empty.<br/>Select products to build invoice.</div>
             ) : (
               cart.map((item) => (
@@ -482,31 +452,6 @@ export default function CheckoutPanel({
         </div>
 
         <div className="border-t pt-3 flex-col gap-2">
-          {/* NEW: PICKUP + LOCATION INPUTS */}
-          <label className="flex items-center gap-2 text-xs font-semibold">
-            <input type="checkbox" checked={isPickup} onChange={(e) => {setIsPickup(e.target.checked); if(e.target.checked){setCustomerLat(null); setCustomerLng(null)}}}/>
-            Customer Pickup
-          </label>
-          {!isPickup && (
-            <div className="flex gap-2">
-              <input type="number" step="any" placeholder="Customer Lat" value={customerLat || ''} onChange={e => setCustomerLat(e.target.value? Number(e.target.value) : null)} className="w-1/2 p-1.5 border rounded text-xs"/>
-              <input type="number" step="any" placeholder="Customer Lng" value={customerLng || ''} onChange={e => setCustomerLng(e.target.value? Number(e.target.value) : null)} className="w-1/2 p-1.5 border rounded text-xs"/>
-            </div>
-          )}
-          {customerLat && <p className="text-[10px] text-gray-500">Distance: {distanceKm.toFixed(2)} KM</p>}
-
-          <div className="flex justify-between text-xs text-gray-500">
-            <span>Subtotal</span>
-            <span>UGX {subtotal.toLocaleString()}</span>
-          </div>
-          <div className="flex justify-between text-xs text-gray-500">
-            <span>VAT (18%)</span>
-            <span>UGX {tax.toLocaleString()}</span>
-          </div>
-          <div className="flex justify-between text-xs text-gray-500">
-            <span>Delivery</span>
-            <span>UGX {deliveryFee.toLocaleString()}</span>
-          </div>
           <div className="flex justify-between text-sm font-bold text-gray-800 border-b pb-2 mb-2">
             <span>Grand Total</span>
             <span className="text-blue-600">UGX {totalAmount.toLocaleString()}</span>
@@ -530,12 +475,12 @@ export default function CheckoutPanel({
 
           <button
             onClick={handleCheckout}
-            disabled={cart.length === 0 || isProcessing || cashAmount < totalAmount ||!shopId || (!isPickup &&!customerLat)}
+            disabled={cart.length === 0 || isProcessing || cashAmount < totalAmount || !shopId}
             className={`w-full py-3 rounded-lg text-white font-bold text-sm shadow transition tracking-wide ${
-              cart.length === 0 || isProcessing || cashAmount < totalAmount ||!shopId || (!isPickup &&!customerLat)? 'bg-gray-300 cursor-not-allowed' : 'bg-emerald-500 hover:bg-emerald-600'
+              cart.length === 0 || isProcessing || cashAmount < totalAmount || !shopId ? 'bg-gray-300 cursor-not-allowed' : 'bg-emerald-500 hover:bg-emerald-600'
             }`}
           >
-            {isProcessing? 'Processing...' :!shopId? 'Loading shop...' : 'Complete Sale & Log Transaction'}
+            {isProcessing ? 'Processing...' : !shopId ? 'Loading shop...' : 'Complete Sale & Log Transaction'}
           </button>
         </div>
       </div>

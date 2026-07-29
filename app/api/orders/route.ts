@@ -22,7 +22,6 @@ export async function POST(request: NextRequest) {
       total,
       cash_received,
       change_given,
-      // NEW FIELDS FROM SHOPCLIENT
       items_total,
       delivery_fee,
       customer_lat,
@@ -40,25 +39,28 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const cleanPaymentMethod = payment_method?.toString().trim()
-    if (!cleanPaymentMethod) {
+    const finalFulfillmentType = fulfillment_type || 'pos' // <-- KEY FIX
+    const cleanPaymentMethod = payment_method?.toString().trim() || 'Cash' // default to Cash for POS
+
+    console.log('--- ORDER DEBUG ---')
+    console.log('Payment method:', cleanPaymentMethod)
+    console.log('Fulfillment:', finalFulfillmentType)
+
+    // ONLY REQUIRE PAYMENT FOR STORE/DELIVERY
+    if (finalFulfillmentType !== 'pos' && !cleanPaymentMethod) {
       return NextResponse.json(
         { error: 'Payment method is required' },
         { status: 400 }
       )
     }
 
-    // For pickup, location can be empty
-    if(fulfillment_type !== 'pickup' && !customer_lat) {
+    // ONLY REQUIRE LOCATION FOR DELIVERY
+    if(finalFulfillmentType === 'delivery' && !customer_lat) {
       return NextResponse.json(
         { error: 'Delivery location required' },
         { status: 400 }
       )
     }
-
-    console.log('--- ORDER DEBUG ---')
-    console.log('Payment method:', cleanPaymentMethod)
-    console.log('Fulfillment:', fulfillment_type)
 
     const orderItems = items.map((item: any) => ({
       product_id: item.id,
@@ -73,7 +75,7 @@ export async function POST(request: NextRequest) {
       user_id: user_id || null,
       customer_name: name,
       customer_whatsapp: phone,
-      delivery_address: location || null, // can be lat,lng or text
+      delivery_address: location || null,
       subtotal: items_total || subtotal || null,
       tax_amount: tax_amount || null,
       total_amount: total,
@@ -89,11 +91,10 @@ export async function POST(request: NextRequest) {
       change_given: change_given || null,
       items: orderItems,
       
-      // NEW COLUMNS
       customer_lat: customer_lat || null,
       customer_lng: customer_lng || null,
       google_maps_link: google_maps_link || null,
-      fulfillment_type: fulfillment_type || 'delivery',
+      fulfillment_type: finalFulfillmentType, // <-- 'pos' for POS
       distance_km: distance_km || 0,
       price_per_km_used: price_per_km_used || 0
     }

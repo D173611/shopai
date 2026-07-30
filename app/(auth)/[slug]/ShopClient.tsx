@@ -43,6 +43,7 @@ type ShopClientProps = {
 const DEFAULT_STORE_LAT = 0.3476; // KAMPALA FALLBACK
 const DEFAULT_STORE_LNG = 32.5825; // KAMPALA FALLBACK
 const DEFAULT_PRICE_PER_KM = 1500;
+const MINIMUM_DELIVERY_FEE = 2000;
 
 export default function ShopClient({ shop, products, pricePerKm }: ShopClientProps) {
   const [search, setSearch] = useState('')
@@ -122,7 +123,8 @@ export default function ShopClient({ shop, products, pricePerKm }: ShopClientPro
           setCustomerLng(pos.lng)
           const dist = getDistance(STORE_LAT, STORE_LNG, pos.lat, pos.lng)
           setDistanceKm(dist)
-          setDeliveryFee(Math.round(dist * PRICE_PER_KM))
+          const calculatedFee = Math.round(dist * PRICE_PER_KM)
+          setDeliveryFee(Math.max(calculatedFee, MINIMUM_DELIVERY_FEE))
           setOrderForm(prev => ({...prev, location: `${pos.lat.toFixed(5)}, ${pos.lng.toFixed(5)}`}))
         })
       } else {
@@ -139,7 +141,8 @@ export default function ShopClient({ shop, products, pricePerKm }: ShopClientPro
     const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
               Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
               Math.sin(dLon/2) * Math.sin(dLon/2);
-    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    const rawDist = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return rawDist * 1.25;
   }
 
   const geocodeLocation = async (query: string) => {
@@ -158,7 +161,8 @@ export default function ShopClient({ shop, products, pricePerKm }: ShopClientPro
 
         const dist = getDistance(STORE_LAT, STORE_LNG, lat, lng)
         setDistanceKm(dist)
-        setDeliveryFee(Math.round(dist * PRICE_PER_KM))
+        const calculatedFee = Math.round(dist * PRICE_PER_KM)
+        setDeliveryFee(Math.max(calculatedFee, MINIMUM_DELIVERY_FEE))
 
         if(markerRef.current && mapInstanceRef.current) {
           markerRef.current.setLatLng([lat, lng])
@@ -186,7 +190,8 @@ export default function ShopClient({ shop, products, pricePerKm }: ShopClientPro
         setOrderForm(prev => ({...prev, location: `${lat}, ${lng}`}))
         const dist = getDistance(STORE_LAT, STORE_LNG, lat, lng)
         setDistanceKm(dist)
-        setDeliveryFee(Math.round(dist * PRICE_PER_KM))
+        const calculatedFee = Math.round(dist * PRICE_PER_KM)
+        setDeliveryFee(Math.max(calculatedFee, MINIMUM_DELIVERY_FEE))
         if(markerRef.current && mapInstanceRef.current) {
           markerRef.current.setLatLng([lat, lng])
           mapInstanceRef.current.setView([lat, lng], 16)
@@ -341,7 +346,7 @@ export default function ShopClient({ shop, products, pricePerKm }: ShopClientPro
                 </a>
               )}
               {shop.payment_info && <div>💳 {shop.payment_info}</div>}
-              <div className="text-xs text-gray-500">Delivery: UGX {PRICE_PER_KM.toLocaleString()}/KM</div>
+              <div className="text-xs text-gray-500">Delivery: UGX {PRICE_PER_KM.toLocaleString()}/KM (Min. UGX {MINIMUM_DELIVERY_FEE.toLocaleString()})</div>
             </div>
           </div>
 
@@ -456,7 +461,7 @@ export default function ShopClient({ shop, products, pricePerKm }: ShopClientPro
                 <span>Items:</span> <span>UGX {itemsTotal.toLocaleString()}</span>
               </div>
               <div className="flex justify-between text-sm font-normal">
-                <span>Delivery @UGX {PRICE_PER_KM}/KM:</span> <span>UGX {deliveryFee.toLocaleString()}</span>
+                <span>Delivery:</span> <span>UGX {deliveryFee.toLocaleString()}</span>
               </div>
               <div className="flex justify-between mt-1">
                 <span>Total:</span> <span>UGX {grandTotal.toLocaleString()}</span>
@@ -575,7 +580,7 @@ export default function ShopClient({ shop, products, pricePerKm }: ShopClientPro
                 <span>Items:</span> <span>UGX {itemsTotal.toLocaleString()}</span>
               </div>
               <div className="flex justify-between text-sm font-normal">
-                <span>Delivery @UGX {PRICE_PER_KM}/KM:</span> <span>UGX {deliveryFee.toLocaleString()}</span>
+                <span>Delivery:</span> <span>UGX {deliveryFee.toLocaleString()}</span>
               </div>
               <div className="flex justify-between mt-1">
                 <span>Total:</span> <span>UGX {grandTotal.toLocaleString()}</span>

@@ -10,17 +10,25 @@ export async function signup(formData: FormData) {
   const shopName = formData.get('shopName') as string
   const slug = formData.get('slug') as string
 
+  if (!email || !password || !shopName || !slug) {
+    return redirect('/signup?error=All fields are required')
+  }
+
   if (password.length < 6) {
     return redirect('/signup?error=Password must be at least 6 characters long')
   }
 
   const cleanSlug = slug.trim().toLowerCase()
 
+  // Get your site URL from env. Falls back to localhost for dev
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'
+
   // 1. Sign up the user + save shop data in metadata temporarily
   const { data: authData, error: authError } = await supabase.auth.signUp({ 
     email, 
     password,
     options: {
+      emailRedirectTo: `${siteUrl}/auth/callback`, // THIS MAKES THE EMAIL SEND
       data: {
         shop_name: shopName,
         shop_slug: cleanSlug,
@@ -41,7 +49,6 @@ export async function signup(formData: FormData) {
 export async function completeOnboarding() {
   const supabase = await createClient()
   
-  // FIXED: this is how you get user in server actions
   const { data: { user }, error: userError } = await supabase.auth.getUser()
   
   if (userError || !user) {

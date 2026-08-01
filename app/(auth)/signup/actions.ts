@@ -1,4 +1,5 @@
 'use server'
+
 import { createClient } from '../../utils/supabase/server'
 import { redirect } from 'next/navigation'
 
@@ -41,19 +42,31 @@ export async function signup(formData: FormData) {
     return redirect('/signup?error=This store URL is already taken')
   }
 
-  // 3. IMMEDIATELY create the shop because email confirm is OFF
-  const { error: shopError } = await supabase.from('shops').insert({
+  // 3. Create the shop because email confirm is OFF
+  const { data: shop, error: shopError } = await supabase.from('shops').insert({
     owner_id: authData.user.id,
     name: shopName,
     slug: cleanSlug,
     is_active: true
-  })
+  }).select().single() // <-- added .select().single() so we get the shop.id back
 
   if (shopError) {
     console.log("❌ DETAILED DATABASE ERROR LOG:", shopError)
     return redirect(`/signup?error=${encodeURIComponent(shopError.message)}`)
   }
 
-  // 4. Redirect straight to dashboard - user is already logged in
+  // 4. Auto-add owner as staff so they can access /staff/orders
+  const { error: staffError } = await supabase.from('shop_staff').insert({
+    shop_id: shop.id,
+    user_id: authData.user.id,
+    role: 'owner'
+  })
+
+  if (staffError) {
+    console.log("⚠️ Could not add owner to staff:", staffError)
+    // Don't block signup if this fails, but log it
+  }
+
+  // 5. Redirect straight to dashboard - user is already logged in
   return redirect('/dashboard?success=Shop created successfully')
 }

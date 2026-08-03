@@ -25,7 +25,7 @@ export default function OrdersClient({
         .from('staff_members')
         .select('shop_id')
         .eq('user_id', user.id)
-        .eq('role', 'cashier')
+        .in('role', ['owner', 'cashier', 'manager']) // <-- ONLY LINE CHANGED
         .maybeSingle()
       
       if (staffMember?.shop_id) {

@@ -1,15 +1,20 @@
 'use client'
 
-import { useState, use } from 'react'
+import { useState } from 'react'
 import { signup } from './actions'
-import DynamicBg from '../../components/DynamicBg' // <-- FIXED: 2 levels up to app/components
+import DynamicBg from '../../components/DynamicBg'
+
+type SearchParams = {
+  error?: string
+  success?: string
+}
 
 export default function SignupForm({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; success?: string }>
+  searchParams: SearchParams // <-- NOT a Promise anymore
 }) {
-  const { error, success } = use(searchParams)
+  const { error, success } = searchParams // <-- NO use() hook needed
 
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
@@ -28,10 +33,8 @@ export default function SignupForm({
 
   return (
     <div className="relative min-h-screen flex items-center justify-center p-4 overflow-hidden">
-      {/* 🎨 Premium Moving Wallpaper Background Layer */}
       <DynamicBg />
 
-      {/* High-End Glassmorphic Card Container */}
       <div className="w-full max-w-md bg-slate-900/40 backdrop-blur-xl rounded-3xl shadow-2xl border-white/10 p-8 z-10 text-white">
         <div className="text-center mb-6">
           <h1 className="text-3xl font-black tracking-tight">Create ShopAI Account</h1>
@@ -39,27 +42,27 @@ export default function SignupForm({
         </div>
 
         {clientError && (
-          <div className="mb-4 bg-rose-500/10 border border-rose-500/20 text-rose-300 rounded-xl p-3.5 text-xs font-medium">
+          <div className="mb-4 bg-rose-500/10 border-rose-500/20 text-rose-300 rounded-xl p-3.5 text-xs font-medium">
             ⚠️ {clientError}
           </div>
         )}
 
         {error && (
           <div className="mb-4 bg-rose-500/10 border border-rose-500/20 text-rose-300 rounded-xl p-3.5 text-xs font-medium">
-            ⚠️ {error}
+            ⚠️ {decodeURIComponent(error)}
           </div>
         )}
 
         {success && (
-          <div className="mb-4 bg-blue-500/10 border-blue-500/20 text-blue-300 rounded-xl p-3.5 text-xs font-medium">
-            ✉️ Check your email. We sent a confirmation link to activate your account. Click it to log in. Check spam too.
+          <div className="mb-4 bg-blue-500/10 border border-blue-500/20 text-blue-300 rounded-xl p-3.5 text-xs font-medium">
+            ✅ {decodeURIComponent(success)}
           </div>
         )}
 
         <form action={signup} onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-[10px] font-bold text-slate-300 uppercase tracking-wider mb-1">Business Email</label>
-            <input name="email" type="email" required placeholder="owner@company.com" className="w-full border border-white/10 rounded-xl p-3 bg-white/5 outline-none focus:border-blue-500 text-sm transition" />
+            <input name="email" type="email" required placeholder="owner@company.com" className="w-full border-white/10 rounded-xl p-3 bg-white/5 outline-none focus:border-blue-500 text-sm transition" />
           </div>
           <div>
             <label className="block text-[10px] font-bold text-slate-300 uppercase tracking-wider mb-1">Secure Password</label>

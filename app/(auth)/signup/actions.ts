@@ -20,6 +20,7 @@ export async function signup(formData: FormData) {
   }
 
   const cleanSlug = slug.trim().toLowerCase()
+  console.log("1. STARTING SIGNUP FOR:", email)
 
   // 1. Sign up the user
   const { data: authData, error: authError } = await supabase.auth.signUp({ 
@@ -28,45 +29,52 @@ export async function signup(formData: FormData) {
   })
   
   if (authError || !authData.user) {
+    console.log("❌ AUTH ERROR:", authError)
     return redirect(`/signup?error=${encodeURIComponent(authError?.message || 'Authentication failed')}`)
   }
+  console.log("2. USER CREATED:", authData.user.id)
 
   // 2. Check if slug is already taken
   const { data: existingShop } = await supabase
     .from('shops')
     .select('slug')
     .eq('slug', cleanSlug)
-    .single()
+    .maybeSingle()
 
   if (existingShop) {
     return redirect('/signup?error=This store URL is already taken')
   }
 
-  // 3. Create the shop because email confirm is OFF
+  // 3. Create the shop
+  console.log("3. CREATING SHOP FOR USER:", authData.user.id)
   const { data: shop, error: shopError } = await supabase.from('shops').insert({
     owner_id: authData.user.id,
     name: shopName,
     slug: cleanSlug,
     is_active: true
-  }).select().single() // <-- added .select().single() so we get the shop.id back
+  }).select().single()
 
   if (shopError) {
-    console.log("❌ DETAILED DATABASE ERROR LOG:", shopError)
+    console.log("❌ SHOP CREATE ERROR:", shopError)
     return redirect(`/signup?error=${encodeURIComponent(shopError.message)}`)
   }
+  console.log("4. SHOP CREATED:", shop.id)
 
-  // 4. Auto-add owner as staff so they can access /staff/orders
-  const { error: staffError } = await supabase.from('shop_staff').insert({
+  // 4. Auto-add owner as admin staff
+  console.log("5. ADDING TO STAFF:", shop.id, authData.user.id)
+  const { error: staffError } = await supabase.from('staff_members').insert({
     shop_id: shop.id,
     user_id: authData.user.id,
-    role: 'owner'
+    role: 'admin' // <-- FIXED: 'admin' is allowed by your constraint
   })
 
   if (staffError) {
-    console.log("⚠️ Could not add owner to staff:", staffError)
-    // Don't block signup if this fails, but log it
+    console.log("❌ STAFF ERROR:", staffError)
+    // Don't block redirect, but log it
+  } else {
+    console.log("✅ STAFF ADDED SUCCESSFULLY")
   }
 
-  // 5. Redirect straight to dashboard - user is already logged in
+  // 5. Redirect straight to dashboard
   return redirect('/dashboard?success=Shop created successfully')
 }

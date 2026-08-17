@@ -14,15 +14,15 @@ type FulfillmentType = 'shop' | 'delivery'
 export default async function ReceiptPage({
   params
 }: {
-  params: Promise<{ id: string }> // CHANGED 1: params is now a Promise
+  params: Promise<{ id: string }>
 }) {
-  const { id } = await params // CHANGED 2: await the params
+  const { id } = await params
 
   const supabase = await createClient()
 
   const { data: order, error } = await supabase
-  .from('orders')
-  .select(`
+.from('orders')
+.select(`
      id,
      order_number,
      total_cost,
@@ -37,8 +37,8 @@ export default async function ReceiptPage({
      items,
      shops!inner(name, logo_url, tin_number, location)
    `)
-  .eq('id', id) // CHANGED 3: use id instead of params.id
-  .single()
+.eq('id', id)
+.single()
 
   if (error ||!order) return notFound()
 
@@ -58,7 +58,7 @@ export default async function ReceiptPage({
     })),
     total: Number(order.total_cost),
     delivery_fee: Number(order.delivery_fee || 0),
-    fulfillment_type: ft, // now typed correctly
+    fulfillment_type: ft, // FIX: Match Receipt.tsx props
     customer_phone: order.customer_whatsapp || undefined,
     cashier_name: order.cashier_name || undefined,
     google_maps_link: order.google_maps_link || undefined

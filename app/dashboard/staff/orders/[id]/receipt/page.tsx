@@ -11,13 +11,19 @@ type Shop = {
 
 type FulfillmentType = 'shop' | 'delivery'
 
-export default async function ReceiptPage({ params }: { params: { id: string } }) {
+export default async function ReceiptPage({
+  params
+}: {
+  params: Promise<{ id: string }> // CHANGED 1: params is now a Promise
+}) {
+  const { id } = await params // CHANGED 2: await the params
+
   const supabase = await createClient()
-  
+
   const { data: order, error } = await supabase
-.from('orders')
-.select(`
-     id, 
+  .from('orders')
+  .select(`
+     id,
      order_number,
      total_cost,
      items_total,
@@ -31,8 +37,8 @@ export default async function ReceiptPage({ params }: { params: { id: string } }
      items,
      shops!inner(name, logo_url, tin_number, location)
    `)
-.eq('id', params.id)
-.single()
+  .eq('id', id) // CHANGED 3: use id instead of params.id
+  .single()
 
   if (error ||!order) return notFound()
 

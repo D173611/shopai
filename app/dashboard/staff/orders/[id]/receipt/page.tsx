@@ -44,7 +44,6 @@ export default async function ReceiptPage({
 
   const items = Array.isArray(order.items)? order.items : []
 
-  // FIX: Cast fulfillment_type properly
   const ft: FulfillmentType = order.fulfillment_type === 'delivery'? 'delivery' : 'shop'
 
   const mappedOrder = {
@@ -58,13 +57,12 @@ export default async function ReceiptPage({
     })),
     total: Number(order.total_cost),
     delivery_fee: Number(order.delivery_fee || 0),
-    fulfillment_type: ft, // FIX: Match Receipt.tsx props
+    fulfillment_type: ft, // SEND THIS: matches your Receipt.tsx
     customer_phone: order.customer_whatsapp || undefined,
     cashier_name: order.cashier_name || undefined,
     google_maps_link: order.google_maps_link || undefined
   }
 
-  // Handle if shops comes as array or object
   const rawShop = order.shops
   const shopArray = Array.isArray(rawShop)? rawShop : [rawShop]
   const s: Shop = shopArray[0]

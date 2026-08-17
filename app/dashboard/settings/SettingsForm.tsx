@@ -13,6 +13,8 @@ type Shop = {
   shop_lng?: number | null
   contact_info?: string | null
   payment_methods?: PaymentMethod[] | null
+  logo_url?: string | null // stores either uploaded path or external URL
+  tin_number?: string | null
 }
 
 export default function SettingsForm({
@@ -43,6 +45,7 @@ export default function SettingsForm({
   return (
     <form
       action={updateShopSettings}
+      // REMOVED encType - Next.js Server Actions handle this automatically
       className="space-y-6 bg-slate-900 bg-opacity-80 backdrop-blur-md p-6 rounded-2xl border border-slate-700/50 shadow-xl"
     >
       <input type="hidden" name="shopId" value={shop.id} />
@@ -54,6 +57,48 @@ export default function SettingsForm({
         value={JSON.stringify(paymentMethods.filter(pm => pm.name.trim() || pm.details.trim()))}
       />
 
+      {/* UPDATED: SHOP LOGO - UPLOAD OR URL */}
+      <div>
+        <label className="block text-xs font-bold text-slate-200 uppercase tracking-wider mb-1">
+          Shop Logo
+        </label>
+        {shop.logo_url && (
+          <img src={shop.logo_url} alt="Current Logo" className="w-20 h-20 object-contain rounded-lg mb-2 border border-slate-700" />
+        )}
+        <div className="space-y-2">
+          <input
+            type="file"
+            name="logo"
+            accept="image/*"
+            className="w-full text-sm p-2.5 border border-slate-700 rounded-xl bg-slate-800 bg-opacity-80 outline-none file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-700 text-white"
+          />
+          <p className="text-xs text-slate-400 text-center">OR</p>
+          <input
+            type="url"
+            name="logo_url"
+            defaultValue={shop.logo_url || ''}
+            placeholder="https://example.com/logo.png"
+            className="w-full text-sm p-2.5 border border-slate-700 rounded-xl bg-slate-800 bg-opacity-80 outline-none focus:border-blue-500 focus:bg-slate-800 transition text-white placeholder:text-slate-400"
+          />
+        </div>
+        <p className="text-xs text-slate-400 mt-1">Upload image or paste link. Shows on receipts only</p>
+      </div>
+
+      {/* TIN NUMBER */}
+      <div>
+        <label className="block text-xs font-bold text-slate-200 uppercase tracking-wider mb-1">
+          TIN / Tax Number
+        </label>
+        <input
+          type="text"
+          name="tin_number"
+          defaultValue={shop.tin_number || ''}
+          placeholder="e.g. 1000123456"
+          className="w-full text-sm p-2.5 border-slate-700 rounded-xl bg-slate-800 bg-opacity-80 outline-none focus:border-blue-500 focus:bg-slate-800 transition text-white placeholder:text-slate-400"
+        />
+        <p className="text-xs text-slate-400 mt-1">This appears on printed receipts only. Not public</p>
+      </div>
+
       <div>
         <label className="block text-xs font-bold text-slate-200 uppercase tracking-wider mb-1">
           Shop Location
@@ -63,7 +108,7 @@ export default function SettingsForm({
           name="location"
           defaultValue={shop.location || ''}
           placeholder="e.g. Kisementi, Kampala"
-          className="w-full text-sm p-2.5 border-slate-700 rounded-xl bg-slate-800 bg-opacity-80 outline-none focus:border-blue-500 focus:bg-slate-800 transition text-white placeholder:text-slate-400"
+          className="w-full text-sm p-2.5 border border-slate-700 rounded-xl bg-slate-800 bg-opacity-80 outline-none focus:border-blue-500 focus:bg-slate-800 transition text-white placeholder:text-slate-400"
         />
         <p className="text-xs text-slate-400 mt-1">This shows at the top of your shop page</p>
       </div>
@@ -93,7 +138,7 @@ export default function SettingsForm({
             name="shop_lng"
             defaultValue={shop.shop_lng?? ''}
             placeholder="32.582520"
-            className="w-full text-sm p-2.5 border border-slate-700 rounded-xl bg-slate-800 bg-opacity-80 outline-none focus:border-blue-500 focus:bg-slate-800 transition text-white placeholder:text-slate-400"
+            className="w-full text-sm p-2.5 border-slate-700 rounded-xl bg-slate-800 bg-opacity-80 outline-none focus:border-blue-500 focus:bg-slate-800 transition text-white placeholder:text-slate-400"
           />
         </div>
       </div>
@@ -125,7 +170,7 @@ export default function SettingsForm({
           name="contact_info"
           defaultValue={shop.contact_info || ''}
           placeholder="e.g. WhatsApp: +256 700 000"
-          className="w-full text-sm p-2.5 border-slate-700 rounded-xl bg-slate-800 bg-opacity-80 outline-none focus:border-blue-500 focus:bg-slate-800 transition text-white placeholder:text-slate-400"
+          className="w-full text-sm p-2.5 border border-slate-700 rounded-xl bg-slate-800 bg-opacity-80 outline-none focus:border-blue-500 focus:bg-slate-800 transition text-white placeholder:text-slate-400"
         />
         <p className="text-xs text-slate-400 mt-1">Phone/email customers can reach you on</p>
       </div>

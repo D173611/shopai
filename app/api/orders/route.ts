@@ -18,7 +18,7 @@ export async function POST(request: NextRequest) {
       transaction_id,
       items,
       subtotal,
-      tax_amount,
+      // tax_amount REMOVED
       total,
       cash_received,
       change_given,
@@ -32,97 +32,92 @@ export async function POST(request: NextRequest) {
       price_per_km_used
     } = body
 
-    if (!name || !phone || !items?.length) {
+    if (!shop_id || !user_id || !name || !phone || !items?.length) {
       return NextResponse.json(
-        { error: 'Missing required fields: name, phone, items' },
+        { error: 'Missing required fields: shop_id, user_id, name, phone, items' },
         { status: 400 }
       )
     }
 
-    const finalFulfillmentType = fulfillment_type || 'pos' // <-- KEY FIX
-    const cleanPaymentMethod = payment_method?.toString().trim() || 'Cash' // default to Cash for POS
+    const finalFulfillmentType = fulfillment_type || 'shop'
+    const cleanPaymentMethod = payment_method?.toString().trim() || 'Cash'
 
     console.log('--- ORDER DEBUG ---')
     console.log('Payment method:', cleanPaymentMethod)
     console.log('Fulfillment:', finalFulfillmentType)
 
-    // ONLY REQUIRE PAYMENT FOR STORE/DELIVERY
     if (finalFulfillmentType !== 'pos' && !cleanPaymentMethod) {
-      return NextResponse.json(
-        { error: 'Payment method is required' },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: 'Payment method is required' }, { status: 400 })
     }
 
-    // ONLY REQUIRE LOCATION FOR DELIVERY
     if(finalFulfillmentType === 'delivery' && !customer_lat) {
-      return NextResponse.json(
-        { error: 'Delivery location required' },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: 'Delivery location required' }, { status: 400 })
     }
 
-    const orderItems = items.map((item: any) => ({
-      product_id: item.id,
-      product_name: item.name,
-      quantity: item.qty,
-      price: item.price,
-      image_url: item.image_url || null
+    const itemsForDB = items.map((item: any) => ({
+      name: item.name,
+      qty: item.qty,
+      price: Number(item.price),
+      total: Number(item.price) * Number(item.qty)
     }))
 
-    const payload = {
-      shop_id: shop_id || null,
-      user_id: user_id || null,
-      customer_name: name,
-      customer_whatsapp: phone,
-      delivery_address: location || null,
-      subtotal: items_total || subtotal || null,
-      tax_amount: tax_amount || null,
-      total_amount: total,
-      delivery_fee: delivery_fee || 0,
-      order_status: 'pending',
-      locked_by_cashier_id: null,
-      locked_at: null,
-      cancelled_by: null,
-      cancelled_at: null,
-      payment_method: cleanPaymentMethod,
-      transaction_id: transaction_id || null,
-      cash_received: cash_received || null,
-      change_given: change_given || null,
-      items: orderItems,
-      
-      customer_lat: customer_lat || null,
-      customer_lng: customer_lng || null,
-      google_maps_link: google_maps_link || null,
-      fulfillment_type: finalFulfillmentType, // <-- 'pos' for POS
-      distance_km: distance_km || 0,
-      price_per_km_used: price_per_km_used || 0
+    const { data: rpcData, error: rpcError } = await supabase.rpc('create_pos_order', {
+      p_shop_id: shop_id,
+      p_cashier_id: user_id,
+      p_cashier_name: name,
+      p_items: itemsForDB,
+      p_payment_method: cleanPaymentMethod,
+      p_cash_received: Number(cash_received) || 0,
+      p_fulfillment_type: finalFulfillmentType,
+      p_delivery_fee: Number(delivery_fee) || 0,
+      p_customer_lat: customer_lat || null,
+      p_customer_lng: customer_lng || null,
+      p_google_maps_link: google_maps_link || null,
+      p_customer_whatsapp: phone || null,
+    })
+
+    if (rpcError) {
+      console.error('--- RPC ERROR ---', rpcError)
+      return NextResponse.json({ error: rpcError.message }, { status: 500 })
     }
 
-    const { data, error } = await supabase
+    const orderId = rpcData.order_id
+
+    const { error: updateError } = await supabase
       .from('orders')
-      .insert(payload)
-      .select()
-      .single()
+      .update({
+        customer_name: name,
+        delivery_address: location || null,
+        subtotal: items_total || subtotal || null,
+        // tax_amount REMOVED
+        transaction_id: transaction_id || null,
+        change_given: change_given || null,
+        distance_km: distance_km || 0,
+        price_per_km_used: price_per_km_used || 0,
+        order_status: 'pending',
+        items: items.map((item: any) => ({
+          product_id: item.id,
+          product_name: item.name,
+          quantity: item.qty,
+          price: item.price,
+          image_url: item.image_url || null
+        }))
+      })
+      .eq('id', orderId)
 
-    if (error) {
-      console.error('--- SUPABASE ERROR ---', error)
-      return NextResponse.json(
-        { error: error.message },
-        { status: 500 }
-      )
-    }
+    if (updateError) console.error('--- UPDATE ERROR ---', updateError)
 
-    console.log('Order created:', data.id)
+    console.log('Order created:', orderId)
     revalidatePath('/dashboard/staff/orders')
     revalidatePath('/orders')
-    return NextResponse.json({ success: true, order: data })
+    
+    return NextResponse.json({ 
+      success: true, 
+      order: { id: orderId, order_number: rpcData.order_number } 
+    })
 
   } catch (err: any) {
     console.error('--- CATCH ERROR ---', err.message)
-    return NextResponse.json(
-      { error: err.message || 'Server error' },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: err.message || 'Server error' }, { status: 500 })
   }
 }

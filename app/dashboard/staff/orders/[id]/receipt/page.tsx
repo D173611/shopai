@@ -21,30 +21,30 @@ export default async function ReceiptPage({
   const supabase = await createClient()
 
   const { data: order, error } = await supabase
-.from('orders')
-.select(`
-     id,
-     order_number,
-     total_cost,
-     items_total,
-     delivery_fee,
-     fulfillment_type,
-     created_at,
-     status,
-     customer_whatsapp,
-     cashier_name,
-     google_maps_link,
-     items,
-     shops!inner(name, logo_url, tin_number, location)
-   `)
-.eq('id', id)
-.single()
+    .from('orders')
+    .select(`
+      id,
+      order_number,
+      total_cost,
+      items_total,
+      delivery_fee,
+      fulfillment_type,
+      created_at,
+      status,
+      customer_whatsapp,
+      cashier_name,
+      google_maps_link,
+      items,
+      shops!inner(name, logo_url, tin_number, location)
+    `)
+    .eq('id', id)
+    .single()
 
-  if (error ||!order) return notFound()
+  if (error || !order) return notFound()
 
-  const items = Array.isArray(order.items)? order.items : []
+  const items = Array.isArray(order.items) ? order.items : []
 
-  const ft: FulfillmentType = order.fulfillment_type === 'delivery'? 'delivery' : 'shop'
+  const ft: FulfillmentType = order.fulfillment_type === 'delivery' ? 'delivery' : 'shop'
 
   const mappedOrder = {
     receipt_number: order.order_number,
@@ -57,22 +57,21 @@ export default async function ReceiptPage({
     })),
     total: Number(order.total_cost),
     delivery_fee: Number(order.delivery_fee || 0),
-    fulfillment_type: ft, // For local Receipt.tsx
-    type: ft === 'delivery'? 'delivery' : 'pos', // For github Receipt.tsx
+    fulfillment_type: ft,
+    type: (ft === 'delivery' ? 'delivery' : 'pos') as 'delivery' | 'pos',
     customer_phone: order.customer_whatsapp || undefined,
-    cashier_name: order.cashier_name || undefined,
-    google_maps_link: order.google_maps_link || undefined
+    cashier_name: order.cashier_name || undefined
   }
 
   const rawShop = order.shops
-  const shopArray = Array.isArray(rawShop)? rawShop : [rawShop]
+  const shopArray = Array.isArray(rawShop) ? rawShop : [rawShop]
   const s: Shop = shopArray[0]
 
   const shop = {
-    name: s?.name?? 'Shop',
-    logo_url: s?.logo_url?? null,
-    tin_number: s?.tin_number?? null,
-    location: s?.location?? null,
+    name: s?.name ?? 'Shop',
+    logo_url: s?.logo_url ?? null,
+    tin_number: s?.tin_number ?? null,
+    location: s?.location ?? null,
   }
 
   return <Receipt shop={shop} order={mappedOrder} />

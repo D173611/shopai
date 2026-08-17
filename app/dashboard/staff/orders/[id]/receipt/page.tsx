@@ -57,7 +57,8 @@ export default async function ReceiptPage({
     })),
     total: Number(order.total_cost),
     delivery_fee: Number(order.delivery_fee || 0),
-    fulfillment_type: ft, // SEND THIS: matches your Receipt.tsx
+    fulfillment_type: ft, // For local Receipt.tsx
+    type: ft === 'delivery'? 'delivery' : 'pos', // For github Receipt.tsx
     customer_phone: order.customer_whatsapp || undefined,
     cashier_name: order.cashier_name || undefined,
     google_maps_link: order.google_maps_link || undefined

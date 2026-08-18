@@ -1,5 +1,6 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
+import { createClient } from '@/app/utils/supabase/client' // ADDED LINE 1
 import ProductImage from '../../dashboard/ProductImage'
 
 type PaymentMethod = { name: string, details: string }
@@ -55,9 +56,11 @@ export default function ShopClient({ shop, products, pricePerKm }: ShopClientPro
   const [otherPaymentMethod, setOtherPaymentMethod] = useState('')
   const [showMap, setShowMap] = useState(false)
 
+  const supabase = createClient() // ADDED LINE 2
+
   // SAFE COORDINATES RESOLUTION (Prioritizes DB settings passed onto shop object)
-  const STORE_LAT = shop.latitude ?? DEFAULT_STORE_LAT;
-  const STORE_LNG = shop.longitude ?? DEFAULT_STORE_LNG;
+  const STORE_LAT = shop.latitude?? DEFAULT_STORE_LAT;
+  const STORE_LNG = shop.longitude?? DEFAULT_STORE_LNG;
 
   const PRICE_PER_KM = pricePerKm || shop.price_per_km || DEFAULT_PRICE_PER_KM;
 
@@ -184,7 +187,7 @@ export default function ShopClient({ shop, products, pricePerKm }: ShopClientPro
     if(parts.length === 2) {
       const lat = parseFloat(parts[0].trim())
       const lng = parseFloat(parts[1].trim())
-      if(!isNaN(lat) && !isNaN(lng)) {
+      if(!isNaN(lat) &&!isNaN(lng)) {
         setCustomerLat(lat)
         setCustomerLng(lng)
         setOrderForm(prev => ({...prev, location: `${lat}, ${lng}`}))
@@ -221,19 +224,19 @@ export default function ShopClient({ shop, products, pricePerKm }: ShopClientPro
       const exists = prev.find(p => p.id === product.id)
       setToast(`${product.name} added!`)
       if (exists) {
-        return prev.map(p => p.id === product.id ? {...p, qty: p.qty + 1 } : p)
+        return prev.map(p => p.id === product.id? {...p, qty: p.qty + 1 } : p)
       }
       return [...prev, {...product, qty: 1 }]
     })
   }
 
   const removeFromCart = (id: string) => {
-    setCart(prev => prev.filter(p => p.id !== id))
+    setCart(prev => prev.filter(p => p.id!== id))
   }
 
   const updateQty = (id: string, qty: number) => {
     if (qty <= 0) return removeFromCart(id)
-    setCart(prev => prev.map(p => p.id === id ? {...p, qty } : p))
+    setCart(prev => prev.map(p => p.id === id? {...p, qty } : p))
   }
 
   const itemsTotal = cart.reduce((sum, item) => sum + (item.retail_price || 0) * item.qty, 0)
@@ -241,17 +244,17 @@ export default function ShopClient({ shop, products, pricePerKm }: ShopClientPro
   const grandTotal = itemsTotal + deliveryFee
 
   const validateAndConfirm = () => {
-    const finalPaymentMethod = orderForm.payment_method === 'Other' ? otherPaymentMethod : orderForm.payment_method
+    const finalPaymentMethod = orderForm.payment_method === 'Other'? otherPaymentMethod : orderForm.payment_method
 
-    if (!orderForm.name || !orderForm.phone) {
+    if (!orderForm.name ||!orderForm.phone) {
       alert('Please fill name and phone/whatsapp')
       return
     }
-    if(!isPickup && !finalPaymentMethod) {
+    if(!isPickup &&!finalPaymentMethod) {
       alert('Please select payment method')
       return
     }
-    if(!isPickup && !customerLat) {
+    if(!isPickup &&!customerLat) {
       alert('Please search location or set pin on map')
       return
     }
@@ -260,16 +263,26 @@ export default function ShopClient({ shop, products, pricePerKm }: ShopClientPro
 
   const handleOrder = async () => {
     setSubmitting(true)
-    const finalPaymentMethod = orderForm.payment_method === 'Other' ? otherPaymentMethod : orderForm.payment_method
-    const googleMapsLink = customerLat ? `https://www.google.com/maps?q=${customerLat},${customerLng}` : null
+
+    const { data } = await supabase.auth.getUser() // ADDED LINE 3
+    const user = data.user // ADDED LINE 4
+    if (!user) { // ADDED LINE 5
+      setSubmitting(false) // ADDED LINE 6
+      return alert("Please login first") // ADDED LINE 7
+    } // ADDED LINE 8
+
+    const finalPaymentMethod = orderForm.payment_method === 'Other'? otherPaymentMethod : orderForm.payment_method
+    const googleMapsLink = customerLat? `https://www.google.com/maps?q=${customerLat},${customerLng}` : null
 
     const res = await fetch('/api/orders', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         shop_id: shop.id,
+        user_id: user.id, // ADDED LINE 9 - THIS FIXES YOUR ERROR
         name: orderForm.name,
         phone: orderForm.phone,
+        customer_whatsapp: orderForm.phone, // ADDED LINE 10
         location: orderForm.location,
         payment_method: finalPaymentMethod,
         transaction_id: orderForm.transaction_id,
@@ -286,7 +299,7 @@ export default function ShopClient({ shop, products, pricePerKm }: ShopClientPro
         customer_lat: customerLat,
         customer_lng: customerLng,
         google_maps_link: googleMapsLink,
-        fulfillment_type: isPickup ? 'pickup' : 'delivery',
+        fulfillment_type: isPickup? 'pickup' : 'delivery',
         distance_km: distanceKm,
         price_per_km_used: PRICE_PER_KM
       })
@@ -409,7 +422,7 @@ export default function ShopClient({ shop, products, pricePerKm }: ShopClientPro
         </button>
       )}
 
-      {showCheckout && !showConfirm && (
+      {showCheckout &&!showConfirm && (
         <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4" onClick={() => setShowCheckout(false)}>
           <div className="bg-white rounded-2xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto shadow-2xl" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-4">
@@ -498,12 +511,12 @@ export default function ShopClient({ shop, products, pricePerKm }: ShopClientPro
                       disabled={searching}
                       className="bg-blue-600 text-white px-4 rounded-lg font-semibold disabled:bg-gray-400"
                     >
-                      {searching ? '...' : 'Find'}
+                      {searching? '...' : 'Find'}
                     </button>
                   </div>
 
                   <button type="button" onClick={() => setShowMap(!showMap)} className="w-full bg-slate-200 text-slate-900 py-2 rounded-lg text-sm font-semibold">
-                    📍 {showMap ? 'Hide Map' : 'Or Drop Pin on Map'}
+                    📍 {showMap? 'Hide Map' : 'Or Drop Pin on Map'}
                   </button>
                   {showMap && <div ref={mapRef} className="w-full h-[250px] rounded-lg border"></div>}
 
@@ -556,10 +569,10 @@ export default function ShopClient({ shop, products, pricePerKm }: ShopClientPro
             <div className="bg-slate-50 rounded-lg p-4 mb-4 text-sm space-y-1">
               <p><span className="font-semibold">Name:</span> {orderForm.name}</p>
               <p><span className="font-semibold">Phone:</span> {orderForm.phone}</p>
-              <p><span className="font-semibold">Fulfillment:</span> {isPickup ? 'Pickup' : 'Delivery'}</p>
+              <p><span className="font-semibold">Fulfillment:</span> {isPickup? 'Pickup' : 'Delivery'}</p>
               {customerLat && <p><span className="font-semibold">Location:</span> <a href={`https://www.google.com/maps?q=${customerLat},${customerLng}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">View on Map</a></p>}
               {!customerLat && <p><span className="font-semibold">Location:</span> Customer Pickup</p>}
-              <p><span className="font-semibold">Payment:</span> {orderForm.payment_method === 'Other' ? otherPaymentMethod : orderForm.payment_method}</p>
+              <p><span className="font-semibold">Payment:</span> {orderForm.payment_method === 'Other'? otherPaymentMethod : orderForm.payment_method}</p>
               {orderForm.transaction_id && <p><span className="font-semibold">Txn ID:</span> {orderForm.transaction_id}</p>}
             </div>
 
@@ -599,7 +612,7 @@ export default function ShopClient({ shop, products, pricePerKm }: ShopClientPro
                 disabled={submitting}
                 className="flex-1 bg-green-600 text-white py-3 rounded-lg font-bold disabled:bg-slate-400 hover:bg-green-700 active:scale-95 transition"
               >
-                {submitting ? 'Placing...' : 'Confirm & Place Order'}
+                {submitting? 'Placing...' : 'Confirm & Place Order'}
               </button>
             </div>
           </div>

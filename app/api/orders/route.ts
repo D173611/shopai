@@ -18,7 +18,6 @@ export async function POST(request: NextRequest) {
       transaction_id,
       items,
       subtotal,
-      // tax_amount REMOVED
       total,
       cash_received,
       change_given,
@@ -61,19 +60,23 @@ export async function POST(request: NextRequest) {
       total: Number(item.price) * Number(item.qty)
     }))
 
+    // FIXED: Added p_user_id, p_customer_name, p_customer_phone to match the 15-param function
     const { data: rpcData, error: rpcError } = await supabase.rpc('create_pos_order', {
-      p_shop_id: shop_id,
-      p_cashier_id: user_id,
-      p_cashier_name: name,
       p_items: itemsForDB,
       p_payment_method: cleanPaymentMethod,
+      p_cashier_id: user_id,
+      p_cashier_name: name,
       p_cash_received: Number(cash_received) || 0,
-      p_fulfillment_type: finalFulfillmentType,
+      p_shop_id: shop_id,
       p_delivery_fee: Number(delivery_fee) || 0,
       p_customer_lat: customer_lat || null,
       p_customer_lng: customer_lng || null,
       p_google_maps_link: google_maps_link || null,
+      p_fulfillment_type: finalFulfillmentType,
       p_customer_whatsapp: phone || null,
+      p_user_id: user_id,              // NEW
+      p_customer_name: name,           // NEW
+      p_customer_phone: phone          // NEW
     })
 
     if (rpcError) {
@@ -89,7 +92,6 @@ export async function POST(request: NextRequest) {
         customer_name: name,
         delivery_address: location || null,
         subtotal: items_total || subtotal || null,
-        // tax_amount REMOVED
         transaction_id: transaction_id || null,
         change_given: change_given || null,
         distance_km: distance_km || 0,

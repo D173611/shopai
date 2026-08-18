@@ -40,6 +40,10 @@ export default function CheckoutPanel({
   const [barcodeSize, setBarcodeSize] = useState<BarcodeSize>('medium')
   const [shopId, setShopId] = useState<string | null>(propShopId || null)
   const [shopDetails, setShopDetails] = useState<{name: string, address: string, phone: string, logo_url: string} | null>(null)
+  
+  // ADDED FOR POS CUSTOMER INFO
+  const [customerName, setCustomerName] = useState<string>('Walk-in Customer')
+  const [customerPhone, setCustomerPhone] = useState<string>('')
 
   const searchInputRef = useRef<HTMLInputElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -52,7 +56,7 @@ export default function CheckoutPanel({
         let currentShopId = propShopId
 
         if (!currentShopId) {
-          const { data } = await supabase.auth.getUser()
+          const { data } = await supabase.auth.getUser() // FIXED: no nested destructuring
           const user = data.user
           if (user) {
             const { data: profile } = await supabase
@@ -274,6 +278,8 @@ export default function CheckoutPanel({
   const clearCart = () => {
     setCart([])
     setCashTendered('')
+    setCustomerName('Walk-in Customer') // RESET
+    setCustomerPhone('') // RESET
   }
 
   const totalAmount = cart.reduce((sum, item) => sum + item.retail_price * item.quantity, 0)
@@ -304,10 +310,11 @@ export default function CheckoutPanel({
               <div>${shopDetails?.address || ''}</div>
               <div>${shopDetails?.phone? `Tel: ${shopDetails.phone}` : ''}</div>
               <div>Cashier: ${cashierName}</div>
+              <div>Customer: ${customerName}</div>
             </div>
             <div class="line"></div>
             <div class="row"><span>Receipt:</span><span class="bold">#${orderNumber}</span></div>
-            <div className="row"><span>Date:</span><span>${new Date().toLocaleString()}</span></div>
+            <div class="row"><span>Date:</span><span>${new Date().toLocaleString()}</span></div>
             <div class="line"></div>
             ${cart.map(item => `
               <div>${item.name.substring(0, 24)}</div>
@@ -334,6 +341,11 @@ export default function CheckoutPanel({
     if (cart.length === 0) return alert("Cart is empty")
     if (cashAmount < totalAmount) return alert("Insufficient cash")
 
+    // FIXED: Get user without nested destructuring
+    const { data } = await supabase.auth.getUser()
+    const user = data.user
+    if (!user) return alert("Cashier not logged in")
+
     try {
       const { data, error } = await supabase.rpc('create_pos_order', {
         p_items: cart.map(item => ({
@@ -353,7 +365,12 @@ export default function CheckoutPanel({
         p_customer_lng: null,
         p_google_maps_link: null,
         p_fulfillment_type: 'pos',
-        p_customer_whatsapp: null
+        
+        // ADDED THESE 3 TO FIX "Missing required fields"
+        p_user_id: user.id,
+        p_customer_name: customerName,
+        p_customer_phone: customerPhone,
+        p_customer_whatsapp: customerPhone
       })
 
       if (error) throw error
@@ -465,6 +482,24 @@ Change: UGX ${changeDue.toLocaleString()}`)
             <div className="flex justify-between items-center border-b pb-2 mb-3">
               <h3 className="font-bold text-gray-800">Active Bill</h3>
               <button onClick={clearCart} className="text-xs text-red-500 hover:underline font-semibold">Clear</button>
+            </div>
+
+            {/* ADDED: Customer inputs */}
+            <div className="mb-3">
+              <input
+                type="text"
+                placeholder="Customer Name"
+                className="w-full p-2 border-gray-300 rounded bg-white text-sm mb-2"
+                value={customerName}
+                onChange={(e) => setCustomerName(e.target.value)}
+              />
+              <input
+                type="text"
+                placeholder="Customer Phone"
+                className="w-full p-2 border-gray-300 rounded bg-white text-sm"
+                value={customerPhone}
+                onChange={(e) => setCustomerPhone(e.target.value)}
+              />
             </div>
 
             <div className="flex flex-col gap-2 max-h-[300px] overflow-y-auto mb-4">

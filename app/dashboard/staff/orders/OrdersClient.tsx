@@ -14,8 +14,8 @@ export default function OrdersClient({
 }) {
   const [orders, setOrders] = useState<Order[]>(initialOrders)
   const [shopId, setShopId] = useState<string | null>(null)
-  const [pricePerKm, setPricePerKm] = useState<number>(1000) // 1. NEW STATE
-  const [saving, setSaving] = useState(false) // 2. NEW STATE
+  const [pricePerKm, setPricePerKm] = useState<number>(1000)
+  const [saving, setSaving] = useState(false)
   const supabase = createClient()
 
   // 1. Get cashier's shop_id AND shop settings
@@ -25,13 +25,12 @@ export default function OrdersClient({
         .from('staff_members')
         .select('shop_id')
         .eq('user_id', user.id)
-        .in('role', ['owner', 'cashier', 'manager']) // <-- ONLY LINE CHANGED
+        .in('role', ['owner', 'cashier', 'manager'])
         .maybeSingle()
       
       if (staffMember?.shop_id) {
         setShopId(staffMember.shop_id)
 
-        // 3. NEW: Fetch price_per_km from shop_settings
         const { data: settings } = await supabase
           .from('shop_settings')
           .select('price_per_km')
@@ -44,7 +43,7 @@ export default function OrdersClient({
     getShop()
   }, [user.id, supabase])
 
-  // 4. NEW: Save price per km function
+  // 2. Save price per km function
   async function savePrice() {
     if (!shopId) return
     setSaving(true)
@@ -56,7 +55,7 @@ export default function OrdersClient({
     alert('Price per KM saved!')
   }
 
-  // 2. Real-time with shop filter - KEEP ITEMS ON UPDATE
+  // 3. Real-time with shop filter - FIXED: don't overwrite items
   useEffect(() => {
     if (!shopId) return
 
@@ -108,7 +107,7 @@ export default function OrdersClient({
                 
                 if (!stillVisible) return null
                 
-                return { ...order, ...updatedOrder, items: order.items } as Order
+                return { ...order, ...updatedOrder } as Order // FIXED: removed items: order.items
               }).filter(Boolean) as Order[]
             )
           }
@@ -127,7 +126,7 @@ export default function OrdersClient({
   return (
     <div className="min-h-screen p-6 space-y-6">
       
-      {/* 5. NEW: PRICE SETTING BOX ON TOP */}
+      {/* PRICE SETTING BOX ON TOP */}
       <div className="bg-white/95 backdrop-blur-xl p-4 rounded-xl shadow-xl border-white/50">
         <h2 className="font-bold text-slate-800">🚚 Delivery Settings</h2>
         <div className="flex items-center gap-3 mt-2">

@@ -9,18 +9,17 @@ export default async function OrdersPage() {
   const user = data?.user
   if (authError || !user) return redirect('/login')
 
-  // DEBUG LOG
   console.log("LOGGED IN USER ID:", user.id)
 
   const { data: staffMember, error: staffError } = await supabase
     .from('staff_members')
     .select('shop_id, role')
     .eq('user_id', user.id)
-    .in('role', ['admin', 'owner', 'cashier', 'manager']) // <-- only line changed
+    .in('role', ['admin', 'owner', 'cashier', 'manager'])
     .maybeSingle()
 
-  console.log("STAFF QUERY RESULT:", staffMember) // ADD THIS
-  console.log("STAFF QUERY ERROR:", staffError) // ADD THIS
+  console.log("STAFF QUERY RESULT:", staffMember)
+  console.log("STAFF QUERY ERROR:", staffError)
 
   if (!staffMember?.shop_id) {
     return <div className="p-6">You are not assigned to a shop. UserID: {user.id}</div>

@@ -129,17 +129,23 @@ export async function completeOrder(orderId: string) {
   const user = data?.user
   if (authError ||!user) return { success: false, error: 'Not logged in' }
 
-  // 1. Fetch order with items + coords + shop_id
+  // 1. Fetch order with items + coords + shop_id + customer info
   const { data: order, error: fetchError } = await supabase
 .from('orders')
 .select(`
     id,
     shop_id,
+    customer_name,
+    customer_whatsapp,
     customer_lat,
     customer_lng,
+    delivery_address,
+    google_maps_link,
+    created_at,
     order_status,
     locked_by_cashier_id,
-    order_items(quantity, product_id, products(name, retail_price))
+    fulfillment_type,
+    order_items(quantity, product_id, products(name, retail_price, image_url))
  `)
 .eq('id', orderId)
 .single()
@@ -157,12 +163,18 @@ export async function completeOrder(orderId: string) {
     return { success: false, error: 'Order already completed' }
   }
 
-  // 2. Get price_per_km and shop coords from shop_settings
+  // 2. Get price_per_km and shop coords + shop info
   const { data: shopSettings } = await supabase
-  .from('shop_settings')
-  .select('price_per_km, shop_lat, shop_lng')
-  .eq('shop_id', order.shop_id)
-  .single()
+ .from('shop_settings')
+ .select('price_per_km, shop_lat, shop_lng')
+ .eq('shop_id', order.shop_id)
+ .single()
+
+  const { data: shopInfo } = await supabase
+ .from('shops')
+ .select('name, logo_url, tin_number, location')
+ .eq('id', order.shop_id)
+ .single()
 
   let delivery_fee = 0
   if (shopSettings && order.customer_lat && order.customer_lng && shopSettings.shop_lat && shopSettings.shop_lng) {
@@ -178,11 +190,20 @@ export async function completeOrder(orderId: string) {
     delivery_fee = Math.round(distance * shopSettings.price_per_km)
   }
 
-  // 3. Calculate items total
+  // 3. Calculate items total and format for Receipt component
   let items_total = 0
-  for (const item of (order.order_items as any[])) {
-    items_total += (item.products?.retail_price || 0) * item.quantity
-  }
+  const receiptItems = (order.order_items as any[]).map(item => {
+    const price = item.products?.retail_price || 0
+    const qty = item.quantity
+    const total = price * qty
+    items_total += total
+    return {
+      name: item.products?.name || 'Item',
+      qty,
+      price,
+      total
+    }
+  })
   const total_cost = items_total + delivery_fee
 
   // 4. Decrement stock
@@ -218,5 +239,26 @@ export async function completeOrder(orderId: string) {
 
   revalidatePath('/dashboard/staff/orders')
   revalidatePath('/dashboard/inventory')
-  return { success: true, delivery_fee, total_cost }
+
+  // 6. RETURN DATA FOR AUTO RECEIPT
+  const receiptData = {
+    receipt_number: `INV-${order.id.slice(0,8).toUpperCase()}`,
+    created_at: order.created_at,
+    items: receiptItems,
+    total: total_cost,
+    delivery_fee: delivery_fee,
+    fulfillment_type: order.fulfillment_type || 'delivery',
+    customer_phone: order.customer_whatsapp,
+    cashier_name: user.user_metadata?.full_name || user.email,
+    google_maps_link: order.google_maps_link
+  }
+
+  const shopData = {
+    name: shopInfo?.name || 'My Shop',
+    logo_url: shopInfo?.logo_url,
+    tin_number: shopInfo?.tin_number,
+    location: shopInfo?.location
+  }
+
+  return { success: true, order: receiptData, shop: shopData }
 }

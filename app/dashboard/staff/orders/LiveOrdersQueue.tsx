@@ -4,6 +4,8 @@ import { useState, useTransition, useEffect } from 'react'
 import { lockOrder, cancelOrder, deleteOrder, completeOrder, unlockOrder } from '@/app/dashboard/staff/orders/actions'
 import { User } from '@supabase/supabase-js'
 import Image from 'next/image'
+import ReactDOMServer from 'react-dom/server' // 1. ADD THIS
+import Receipt from '@/app/components/Receipt'
 
 export type OrderItem = {
   product_id?: string
@@ -27,7 +29,7 @@ export type Order = {
   items_total?: number | string
   delivery_fee?: number | string
   item_count?: number
-  fulfillment_type?: 'pickup' | 'delivery'
+  fulfillment_type?: 'pickup' | 'delivery' | 'shop'
   order_status: string
   locked_by_cashier_id: string | null
   locked_at: string | null
@@ -57,7 +59,7 @@ export default function LiveOrdersQueue({
       const merged: Order[] = serverOrders.map(serverOrder => {
         const localOrder = localOrderMap.get(serverOrder.id)
         if (!localOrder) return serverOrder
-        return { ...serverOrder }
+        return {...serverOrder }
       })
       return merged
     })
@@ -68,12 +70,37 @@ export default function LiveOrdersQueue({
     alert('Copied to clipboard!')
   }
 
+  // 2. NEW FUNCTION: PRINT ONLY RECEIPT IN NEW WINDOW
+  const printReceiptOnly = (orderData: any, shopData: any) => {
+    const receiptHtml = ReactDOMServer.renderToString(<Receipt order={orderData} shop={shopData} />)
+    
+    const printWindow = window.open('', '_blank', 'width=300,height=600')
+    if (!printWindow) return alert('Please allow popups for this site')
+
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>Receipt</title>
+          <style>
+            @page { size: 80mm auto; margin: 0; }
+            body { font-family: 'Courier New', monospace; width: 80mm; margin: 0; padding: 5mm; font-size: 12px; }
+           .no-print-bg { background: white!important; }
+          </style>
+        </head>
+        <body onload="window.print(); window.close()">
+          ${receiptHtml}
+        </body>
+      </html>
+    `)
+    printWindow.document.close()
+  }
+
   async function handleLock(orderId: string) {
     console.log('1. BUTTON CLICKED')
     setLocalOrders(current =>
       current.map(o =>
         o.id === orderId
-          ? { ...o, order_status: 'processing', locked_by_cashier_id: currentUser.id, locked_at: new Date().toISOString() }
+         ? {...o, order_status: 'processing', locked_by_cashier_id: currentUser.id, locked_at: new Date().toISOString() }
           : o
       )
     )
@@ -89,7 +116,7 @@ export default function LiveOrdersQueue({
     setLocalOrders(current =>
       current.map(o =>
         o.id === orderId
-          ? { ...o, order_status: 'pending', locked_by_cashier_id: null, locked_at: null }
+         ? {...o, order_status: 'pending', locked_by_cashier_id: null, locked_at: null }
           : o
       )
     )
@@ -103,7 +130,7 @@ export default function LiveOrdersQueue({
     setLocalOrders(current =>
       current.map(o =>
         o.id === orderId
-          ? { ...o, order_status: 'cancelled', locked_by_cashier_id: null, cancelled_by: currentUser.id, cancelled_at: new Date().toISOString() }
+         ? {...o, order_status: 'cancelled', locked_by_cashier_id: null, cancelled_by: currentUser.id, cancelled_at: new Date().toISOString() }
           : o
       )
     )
@@ -115,7 +142,7 @@ export default function LiveOrdersQueue({
 
   async function handleDelete(orderId: string) {
     if (!confirm('Permanently delete this order?')) return
-    setLocalOrders(current => current.filter(o => o.id !== orderId))
+    setLocalOrders(current => current.filter(o => o.id!== orderId))
     startTransition(async () => {
       const res = await deleteOrder(orderId)
       if (res.error) alert(res.error)
@@ -127,16 +154,21 @@ export default function LiveOrdersQueue({
     setLocalOrders(current =>
       current.map(o =>
         o.id === orderId
-          ? { ...o, order_status: 'delivered' }
+         ? {...o, order_status: 'delivered' }
           : o
       )
     )
     startTransition(async () => {
-      const res = await completeOrder(orderId)
+      const res = await completeOrder(orderId) // NOW RETURNS {order, shop}
       if (res.error) {
         alert(res.error)
       } else {
-        alert('Order completed. Stock updated.')
+        alert('Order completed. Stock updated. Receipt printing...')
+        
+        // 3. CALL NEW PRINT FUNCTION INSTEAD OF MOUNTING COMPONENT
+        if (res.order && res.shop) {
+          printReceiptOnly(res.order, res.shop)
+        }
       }
     })
   }
@@ -145,26 +177,26 @@ export default function LiveOrdersQueue({
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
       {localOrders?.map(order => {
         const isLockedByMe = order.locked_by_cashier_id === currentUser.id
-        const isLockedByOther = Boolean(order.locked_by_cashier_id && !isLockedByMe)
-        const isPendingLock = order.order_status === 'pending' && !order.locked_by_cashier_id
+        const isLockedByOther = Boolean(order.locked_by_cashier_id &&!isLockedByMe)
+        const isPendingLock = order.order_status === 'pending' &&!order.locked_by_cashier_id
 
         const displayTotal = Number(order.total || order.total_amount || 0)
         const displayItemsTotal = Number(order.items_total || 0)
         const displayDeliveryFee = Number(order.delivery_fee || 0)
-        const displayItems = order.order_items && order.order_items.length > 0 ? order.order_items : order.items
+        const displayItems = order.order_items && order.order_items.length > 0? order.order_items : order.items
 
         return (
           <div key={order.id} className={`p-6 rounded-2xl border-2 backdrop-blur-xl transition shadow-2xl space-y-4 ${
-            order.locked_by_cashier_id ? 'bg-amber-50/95 border-amber-400' : 'bg-white/95 border-slate-300'
-          } ${isPending ? 'opacity-70' : ''}`}>
+            order.locked_by_cashier_id? 'bg-amber-50/95 border-amber-400' : 'bg-white/95 border-slate-300'
+          } ${isPending? 'opacity-70' : ''}`}>
 
             <div className="flex justify-between items-start gap-4">
               <div className="flex-1">
                 <div className="flex gap-2 items-center mb-2">
                   <span className={`text-sm px-3 py-1 rounded-full font-black uppercase tracking-wide ${
-                    order.order_status === 'processing' ? 'bg-amber-200 text-amber-900' :
-                    order.order_status === 'cancelled' ? 'bg-rose-200 text-rose-900' :
-                    order.order_status === 'delivered' ? 'bg-green-200 text-green-900' :
+                    order.order_status === 'processing'? 'bg-amber-200 text-amber-900' :
+                    order.order_status === 'cancelled'? 'bg-rose-200 text-rose-900' :
+                    order.order_status === 'delivered'? 'bg-green-200 text-green-900' :
                     'bg-blue-200 text-blue-900'
                   }`}>
                     {order.order_status}
@@ -179,25 +211,14 @@ export default function LiveOrdersQueue({
 
                 <h3 className="font-black text-slate-900 text-xl mt-2">{order.customer_name}</h3>
 
-                {/* LOCATION SECTION */}
                 <div className="mt-2 space-y-2 bg-blue-50 p-3 rounded-lg border-blue-200">
                   <p className="text-sm text-slate-800 font-semibold">📍 {order.delivery_address || 'No address'}</p>
-
                   {order.google_maps_link && (
                     <div className="space-y-2">
-                      <a
-                        href={order.google_maps_link}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-xs text-blue-600 hover:underline font-bold block break-all"
-                      >
+                      <a href={order.google_maps_link} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline font-bold block break-all">
                         {order.google_maps_link}
                       </a>
-
-                      <button
-                        onClick={() => copyToClipboard(order.google_maps_link)}
-                        className="text-xs bg-white border border-blue-300 text-blue-700 px-3 py-1 rounded-lg font-bold hover:bg-blue-100"
-                      >
+                      <button onClick={() => copyToClipboard(order.google_maps_link)} className="text-xs bg-white border-blue-300 text-blue-700 px-3 py-1 rounded-lg font-bold hover:bg-blue-100">
                         📋 Copy Location Link
                       </button>
                     </div>
@@ -205,27 +226,19 @@ export default function LiveOrdersQueue({
                 </div>
 
                 <p className="text-sm text-slate-800 font-semibold mt-2">💬 {order.customer_whatsapp}</p>
-                {order.payment_method && (
-                  <p className="text-sm text-slate-800 font-bold mt-1">💳 {order.payment_method}</p>
-                )}
-                {order.transaction_id && (
-                  <p className="text-xs text-slate-700 mt-1 font-mono font-bold">Txn: {order.transaction_id}</p>
-                )}
+                {order.payment_method && (<p className="text-sm text-slate-800 font-bold mt-1">💳 {order.payment_method}</p>)}
+                {order.transaction_id && (<p className="text-xs text-slate-700 mt-1 font-mono font-bold">Txn: {order.transaction_id}</p>)}
                 <p className="text-xs text-slate-600 mt-2 font-medium">{new Date(order.created_at).toLocaleString()}</p>
               </div>
 
               <div className="text-right">
                 <span className="text-xl font-black text-slate-900 font-mono">
-                  UGX {order.fulfillment_type === 'pickup' ? displayItemsTotal.toLocaleString() : displayTotal.toLocaleString()}
+                  UGX {order.fulfillment_type === 'pickup'? displayItemsTotal.toLocaleString() : displayTotal.toLocaleString()}
                 </span>
                 {order.fulfillment_type === 'delivery' && displayDeliveryFee > 0 && (
-                  <div className="text-xs text-gray-500 mt-1">
-                    Items: {displayItemsTotal.toLocaleString()} + Del: {displayDeliveryFee.toLocaleString()}
-                  </div>
+                  <div className="text-xs text-gray-500 mt-1">Items: {displayItemsTotal.toLocaleString()} + Del: {displayDeliveryFee.toLocaleString()}</div>
                 )}
-                {order.item_count !== undefined && (
-                  <div className="text-xs text-slate-600 mt-1">Items: {order.item_count}</div>
-                )}
+                {order.item_count!== undefined && (<div className="text-xs text-slate-600 mt-1">Items: {order.item_count}</div>)}
               </div>
             </div>
 
@@ -237,10 +250,9 @@ export default function LiveOrdersQueue({
                   const itemQty = item.quantity || item.qty || 1
                   const itemPrice = item.products?.retail_price || item.price
                   const itemImage = item.products?.image_url || item.image_url
-
                   return (
                     <div key={idx} className="flex items-center gap-4 bg-white p-3 rounded-lg border-slate-200">
-                      {itemImage ? (
+                      {itemImage? (
                         <Image src={itemImage} alt={itemName} width={56} height={56} className="rounded-lg object-cover border-2 border-slate-200" />
                       ) : (
                         <div className="w-14 h-14 bg-slate-300 rounded-lg flex items-center justify-center text-2xl">📦</div>
@@ -256,11 +268,11 @@ export default function LiveOrdersQueue({
             )}
 
             <div className="flex gap-2 border-t-2 border-slate-300 pt-4 flex-wrap">
-              {isPendingLock ? (
+              {isPendingLock? (
                 <button onClick={() => handleLock(order.id)} disabled={isPending} className="flex-1 bg-slate-900 hover:bg-slate-800 disabled:bg-slate-400 text-white font-black p-3.5 rounded-xl text-base transition">
                   ⚡ Accept & Lock
                 </button>
-              ) : isLockedByMe && order.order_status === 'processing' ? (
+              ) : isLockedByMe && order.order_status === 'processing'? (
                 <>
                   <button onClick={() => handleComplete(order.id)} disabled={isPending} className="flex-1 bg-green-700 hover:bg-green-600 disabled:bg-slate-400 text-white font-black p-3.5 rounded-xl text-base transition">
                     ✅ Mark Delivered
@@ -272,11 +284,11 @@ export default function LiveOrdersQueue({
                     Cancel
                   </button>
                 </>
-              ) : isLockedByMe ? (
+              ) : isLockedByMe? (
                 <div className="bg-green-200 text-green-900 p-3 rounded-xl text-base font-black text-center flex-1 border-2 border-green-400">
                   ✅ Locked by you
                 </div>
-              ) : isLockedByOther ? (
+              ) : isLockedByOther? (
                 <div className="bg-amber-200 text-amber-900 p-3 rounded-xl text-base font-black text-center flex-1 border-2 border-amber-400">
                   🔒 Locked by another agent
                 </div>
@@ -286,7 +298,7 @@ export default function LiveOrdersQueue({
                 </div>
               )}
 
-              {isPendingLock && order.order_status !== 'cancelled' && (
+              {isPendingLock && order.order_status!== 'cancelled' && (
                 <button onClick={() => handleCancel(order.id)} disabled={isPending} className="bg-rose-200 text-rose-900 hover:bg-rose-300 disabled:bg-slate-100 border-2 border-rose-400 text-sm font-black px-5 py-3.5 rounded-xl transition">
                   Cancel
                 </button>

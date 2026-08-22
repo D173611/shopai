@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { updateShopSettings } from './actions'
 
 type PaymentMethod = { name: string, details: string }
@@ -9,13 +9,24 @@ type Shop = {
   name: string
   slug: string
   location?: string | null
+  country?: string | null // <-- ADDED THIS
   shop_lat?: number | null
   shop_lng?: number | null
   contact_info?: string | null
   payment_methods?: PaymentMethod[] | null
-  logo_url?: string | null // stores either uploaded path or external URL
+  logo_url?: string | null
   tin_number?: string | null
 }
+
+const ALL_COUNTRIES = [
+  'Uganda', 'Kenya', 'Tanzania', 'Rwanda', 'Burundi', 'South Sudan', 'Somalia', 'Djibouti', 'Eritrea', 'Ethiopia',
+  'South Africa', 'Botswana', 'Namibia', 'Zambia', 'Zimbabwe', 'Malawi', 'Mozambique', 'Eswatini', 'Lesotho', 'Angola',
+  'Nigeria', 'Ghana', 'Senegal', "Cote d'Ivoire", 'Mali', 'Burkina Faso', 'Niger', 'Togo', 'Benin', 'Guinea-Bissau',
+  'Liberia', 'Sierra Leone', 'Guinea', 'Gambia', 'Cape Verde',
+  'Cameroon', 'Gabon', 'Congo', 'DR Congo', 'Central African Republic', 'Chad', 'Equatorial Guinea', 'Sao Tome and Principe',
+  'Egypt', 'Morocco', 'Algeria', 'Tunisia', 'Libya', 'Sudan', 'Mauritania',
+  'Madagascar', 'Mauritius', 'Seychelles', 'Comoros', 'USA'
+]
 
 export default function SettingsForm({
   shop,
@@ -27,6 +38,14 @@ export default function SettingsForm({
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>(
     shop.payment_methods?.length? shop.payment_methods : [{ name: '', details: '' }]
   )
+  const [country, setCountry] = useState(shop.country || 'Uganda') // <-- ADDED
+  const [search, setSearch] = useState(shop.country || 'Uganda') // <-- ADDED
+  const [showList, setShowList] = useState(false) // <-- ADDED
+
+  const filteredCountries = useMemo(() =>
+    ALL_COUNTRIES.filter(c =>
+      c.toLowerCase().includes(search.toLowerCase())
+    ), [search])
 
   const addPaymentMethod = () => {
     setPaymentMethods([...paymentMethods, { name: '', details: '' }])
@@ -45,11 +64,11 @@ export default function SettingsForm({
   return (
     <form
       action={updateShopSettings}
-      // REMOVED encType - Next.js Server Actions handle this automatically
       className="space-y-6 bg-slate-900 bg-opacity-80 backdrop-blur-md p-6 rounded-2xl border border-slate-700/50 shadow-xl"
     >
       <input type="hidden" name="shopId" value={shop.id} />
       <input type="hidden" name="shopSlug" value={shop.slug} />
+      <input type="hidden" name="country" value={country} /> {/* <-- ADDED THIS */}
 
       <input
         type="hidden"
@@ -57,13 +76,45 @@ export default function SettingsForm({
         value={JSON.stringify(paymentMethods.filter(pm => pm.name.trim() || pm.details.trim()))}
       />
 
+      {/* COUNTRY SEARCH FIELD - NEW */}
+      <div>
+        <label className="block text-xs font-bold text-slate-200 uppercase tracking-wider mb-1">
+          Shop Country
+        </label>
+        <div className="relative">
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => {setSearch(e.target.value); setShowList(true)}}
+            onFocus={() => setShowList(true)}
+            onBlur={() => setTimeout(() => setShowList(false), 200)}
+            placeholder="Search your country..."
+            className="w-full text-sm p-2.5 border border-slate-700 rounded-xl bg-slate-800 bg-opacity-80 outline-none focus:border-blue-500 focus:bg-slate-800 transition text-white placeholder:text-slate-400"
+          />
+          {showList && (
+            <div className="absolute z-20 w-full bg-slate-800 border border-slate-700 rounded-lg mt-1 max-h-48 overflow-y-auto shadow-2xl">
+              {filteredCountries.length > 0? filteredCountries.map(c => (
+                <div
+                  key={c}
+                  onMouseDown={() => {setCountry(c); setSearch(c); setShowList(false)}} // use onMouseDown so blur doesn't fire first
+                  className="p-2 hover:bg-slate-700 cursor-pointer text-white text-sm"
+                >
+                  {c}
+                </div>
+              )) : <div className="p-2 text-slate-400 text-sm">No country found</div>}
+            </div>
+          )}
+        </div>
+        <p className="text-xs text-slate-400 mt-1">This sets your receipt currency. e.g KSh, UGX, ₦</p>
+      </div>
+
       {/* UPDATED: SHOP LOGO - UPLOAD OR URL */}
       <div>
         <label className="block text-xs font-bold text-slate-200 uppercase tracking-wider mb-1">
           Shop Logo
         </label>
         {shop.logo_url && (
-          <img src={shop.logo_url} alt="Current Logo" className="w-20 h-20 object-contain rounded-lg mb-2 border border-slate-700" />
+          <img src={shop.logo_url} alt="Current Logo" className="w-20 h-20 object-contain rounded-lg mb-2 border-slate-700" />
         )}
         <div className="space-y-2">
           <input
@@ -108,7 +159,7 @@ export default function SettingsForm({
           name="location"
           defaultValue={shop.location || ''}
           placeholder="e.g. Kisementi, Kampala"
-          className="w-full text-sm p-2.5 border border-slate-700 rounded-xl bg-slate-800 bg-opacity-80 outline-none focus:border-blue-500 focus:bg-slate-800 transition text-white placeholder:text-slate-400"
+          className="w-full text-sm p-2.5 border-slate-700 rounded-xl bg-slate-800 bg-opacity-80 outline-none focus:border-blue-500 focus:bg-slate-800 transition text-white placeholder:text-slate-400"
         />
         <p className="text-xs text-slate-400 mt-1">This shows at the top of your shop page</p>
       </div>

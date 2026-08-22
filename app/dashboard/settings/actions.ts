@@ -20,6 +20,7 @@ export async function updateShopSettings(formData: FormData) {
   const shop_lng = formData.get('shop_lng') as string
   const price_per_km = formData.get('price_per_km') as string
   const tin_number = formData.get('tin_number') as string
+  const country = formData.get('country') as string // <-- 1. ADDED THIS LINE
   const logo_url_input = formData.get('logo_url') as string
   const logoFile = formData.get('logo') as File
 
@@ -69,6 +70,7 @@ export async function updateShopSettings(formData: FormData) {
       location,
       contact_info,
       payment_methods,
+      country: country || 'Uganda', // <-- 2. ADDED THIS LINE
       shop_lat: shop_lat ? Number(shop_lat) : null,
       shop_lng: shop_lng ? Number(shop_lng) : null,
       logo_url: final_logo_url || null,

@@ -34,22 +34,31 @@ export default async function ShopPage({
     .gt('stock_quantity', 0)
     .limit(100)
 
-  // 3. Fetch price_per_km from the shop_settings table using shop_id
+  // VIDEO ADD: 3. Fetch all videos for these products
+  const productIds = products?.map(p => p.id) || [] // VIDEO ADD
+  const { data: videos } = await supabase // VIDEO ADD
+    .from('product_videos') // VIDEO ADD
+    .select('*') // VIDEO ADD
+    .in('product_id', productIds) // VIDEO ADD
+
+  // 4. Fetch price_per_km from the shop_settings table using shop_id
   const { data: settings } = await supabase
     .from('shop_settings')
     .select('price_per_km, delivery_enabled')
     .eq('shop_id', shop.id)
     .maybeSingle()
 
-  // 4. Merge everything cleanly for the client component
+  // 5. Merge everything cleanly for the client component
   const enhancedShop = {
     ...shop,
     latitude: shop.shop_lat,      // Mapped from public.shops
     longitude: shop.shop_lng,    // Mapped from public.shops
-    price_per_km: settings?.price_per_km ?? 1000 // Pulled live from public.shop_settings
+    price_per_km: settings?.price_per_km ?? 1000, // Pulled live from public.shop_settings
+    country: shop.country || 'Uganda' // <-- ONLY LINE ADDED
   }
 
   const pricePerKm = settings?.price_per_km || 1000
 
-  return <ShopClient shop={enhancedShop} products={products || []} pricePerKm={pricePerKm} />
+  // VIDEO ADD: Pass videos too
+  return <ShopClient shop={enhancedShop} products={products || []} pricePerKm={pricePerKm} videos={videos || []} /> // VIDEO ADD
 }

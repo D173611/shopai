@@ -1,6 +1,7 @@
 import { createClient } from '@/app/utils/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { NextRequest, NextResponse } from 'next/server'
+import { formatCurrencySync } from '@/app/lib/currencies' // <-- ADDED ONLY THIS IMPORT
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient()
@@ -43,6 +44,10 @@ export async function POST(request: NextRequest) {
     if(finalFulfillmentType === 'delivery' && !customer_lat) {
       return NextResponse.json({ error: 'Delivery location required' }, { status: 400 })
     }
+
+    // GET SHOP COUNTRY FOR CURRENCY <-- ADDED ONLY THESE 2 LINES
+    const { data: shopData } = await supabase.from('shops').select('country').eq('id', shop_id).single()
+    const shopCountry = shopData?.country || 'Uganda' // <-- ADDED
 
     // FIX 1: Send id + image_url to DB function
     const itemsForDB = items.map((item: any) => ({
@@ -115,7 +120,10 @@ export async function POST(request: NextRequest) {
     
     return NextResponse.json({ 
       success: true, 
-      order: { id: orderId, order_number: rpcData.order_number } 
+      order: { id: orderId, order_number: rpcData.order_number },
+      shop_country: shopCountry, // <-- ADDED: so receipt can use correct currency
+      formatted_total: formatCurrencySync(calcTotal, shopCountry), // <-- ADDED: for instant WhatsApp message
+      formatted_delivery: formatCurrencySync(calcDeliveryFee, shopCountry) // <-- ADDED
     })
 
   } catch (err: any) {

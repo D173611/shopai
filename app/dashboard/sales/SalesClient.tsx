@@ -2,6 +2,7 @@
 import { useRouter } from 'next/navigation'
 import DeleteSalesButton from './DeleteSalesButton'
 import DownloadPDFButton from './DownloadPDFButton'
+import { formatCurrencySync } from '@/app/lib/currencies' // ADDED ONLY THIS IMPORT
 
 type Props = {
   orders: any[]
@@ -10,11 +11,13 @@ type Props = {
   shopId: string
   filter: string
   selectedBranch: string
+  country?: string | null // ADDED ONLY THIS FIELD
 }
 
-export default function SalesClient({ orders, allOrders, branches, shopId, filter, selectedBranch }: Props) {
+export default function SalesClient({ orders, allOrders, branches, shopId, filter, selectedBranch, country }: Props) {
   const router = useRouter()
   const branchMap = new Map(branches.map(b => [b.id, b.name]))
+  const COUNTRY = country || 'Uganda' // ADDED ONLY THIS LINE
 
   const getOrderTotal = (order: any): number => {
     const possibleFields = [
@@ -78,20 +81,20 @@ export default function SalesClient({ orders, allOrders, branches, shopId, filte
   const yearAgoTime = yearAgo.getTime()
 
   const dailyTotal = allOrders
-  .filter(o => new Date(o.created_at).getTime() >= todayStart)
-  .reduce((sum, o) => sum + getOrderTotal(o), 0)
+ .filter(o => new Date(o.created_at).getTime() >= todayStart)
+ .reduce((sum, o) => sum + getOrderTotal(o), 0)
 
   const weeklyTotal = allOrders
-  .filter(o => new Date(o.created_at).getTime() >= weekAgoTime)
-  .reduce((sum, o) => sum + getOrderTotal(o), 0)
+ .filter(o => new Date(o.created_at).getTime() >= weekAgoTime)
+ .reduce((sum, o) => sum + getOrderTotal(o), 0)
 
   const monthlyTotal = allOrders
-  .filter(o => new Date(o.created_at).getTime() >= monthAgoTime)
-  .reduce((sum, o) => sum + getOrderTotal(o), 0)
+ .filter(o => new Date(o.created_at).getTime() >= monthAgoTime)
+ .reduce((sum, o) => sum + getOrderTotal(o), 0)
 
   const yearlyTotal = allOrders
-  .filter(o => new Date(o.created_at).getTime() >= yearAgoTime)
-  .reduce((sum, o) => sum + getOrderTotal(o), 0)
+ .filter(o => new Date(o.created_at).getTime() >= yearAgoTime)
+ .reduce((sum, o) => sum + getOrderTotal(o), 0)
 
   const handleFilterChange = (newFilter: string) => {
     router.push(`/dashboard/sales?filter=${newFilter}&branch=${selectedBranch}`)
@@ -134,26 +137,26 @@ export default function SalesClient({ orders, allOrders, branches, shopId, filte
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-slate-950/95 backdrop-blur-xl text-slate-100 p-4 rounded-2xl border border-slate-700 shadow-2xl">
           <span className="text-xs font-bold text-slate-400 uppercase">Today</span>
-          <h2 className="text-2xl font-black text-emerald-400 font-mono mt-1">UGX {dailyTotal.toLocaleString()}</h2>
+          <h2 className="text-2xl font-black text-emerald-400 font-mono mt-1">{formatCurrencySync(dailyTotal, COUNTRY)}</h2>
         </div>
         <div className="bg-slate-950/95 backdrop-blur-xl text-slate-100 p-4 rounded-2xl border border-slate-700 shadow-2xl">
           <span className="text-xs font-bold text-slate-400 uppercase">This Week</span>
-          <h2 className="text-2xl font-black text-emerald-400 font-mono mt-1">UGX {weeklyTotal.toLocaleString()}</h2>
+          <h2 className="text-2xl font-black text-emerald-400 font-mono mt-1">{formatCurrencySync(weeklyTotal, COUNTRY)}</h2>
         </div>
         <div className="bg-slate-950/95 backdrop-blur-xl text-slate-100 p-4 rounded-2xl border border-slate-700 shadow-2xl">
           <span className="text-xs font-bold text-slate-400 uppercase">This Month</span>
-          <h2 className="text-2xl font-black text-emerald-400 font-mono mt-1">UGX {monthlyTotal.toLocaleString()}</h2>
+          <h2 className="text-2xl font-black text-emerald-400 font-mono mt-1">{formatCurrencySync(monthlyTotal, COUNTRY)}</h2>
         </div>
         <div className="bg-slate-950/95 backdrop-blur-xl text-slate-100 p-4 rounded-2xl border border-slate-700 shadow-2xl">
           <span className="text-xs font-bold text-slate-400 uppercase">This Year</span>
-          <h2 className="text-2xl font-black text-emerald-400 font-mono mt-1">UGX {yearlyTotal.toLocaleString()}</h2>
+          <h2 className="text-2xl font-black text-emerald-400 font-mono mt-1">{formatCurrencySync(yearlyTotal, COUNTRY)}</h2>
         </div>
       </div>
 
       <div className="flex gap-4 flex-wrap">
         <div className="bg-slate-950/95 backdrop-blur-xl text-slate-100 p-6 rounded-2xl border border-slate-700 shadow-2xl flex-1 min-w-[200px]">
           <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Filtered Period Revenue</span>
-          <h2 className="text-3xl font-black text-emerald-400 font-mono mt-1 drop-shadow">UGX {periodTotalRevenue.toLocaleString()}</h2>
+          <h2 className="text-3xl font-black text-emerald-400 font-mono mt-1 drop-shadow">{formatCurrencySync(periodTotalRevenue, COUNTRY)}</h2>
           <span className="text-xs text-slate-500">{orders.length} orders</span>
         </div>
 
@@ -183,7 +186,7 @@ export default function SalesClient({ orders, allOrders, branches, shopId, filte
                 orders.map((order) => {
                   const isPOS = order.source === 'POS' || order.source === 'pos'
                   const customerDisplay = isPOS
-               ? 'Shop Order'
+              ? 'Shop Order'
                     : `${order.customer_name || order.name || 'Unknown'} • ${order.phone || 'No phone'}`
 
                   return (
@@ -201,7 +204,7 @@ export default function SalesClient({ orders, allOrders, branches, shopId, filte
                         {branchMap.get(order.branch_id) || 'Main Hub'}
                       </td>
                       <td className="py-3 text-right font-black text-emerald-400 font-mono">
-                        UGX {getOrderTotal(order).toLocaleString()}
+                        {formatCurrencySync(getOrderTotal(order), COUNTRY)}
                       </td>
                     </tr>
                   )

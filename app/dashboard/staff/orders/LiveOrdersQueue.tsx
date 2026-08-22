@@ -4,8 +4,9 @@ import { useState, useTransition, useEffect } from 'react'
 import { lockOrder, cancelOrder, deleteOrder, completeOrder, unlockOrder } from '@/app/dashboard/staff/orders/actions'
 import { User } from '@supabase/supabase-js'
 import Image from 'next/image'
-import ReactDOMServer from 'react-dom/server' // 1. ADD THIS
+import ReactDOMServer from 'react-dom/server'
 import Receipt from '@/app/components/Receipt'
+import { useCurrency } from '@/app/lib/useCurrency'
 
 export type OrderItem = {
   product_id?: string
@@ -43,15 +44,29 @@ export type Order = {
   shop_id: string
 }
 
+function OrderTotal({ amount, country }: { amount: number, country: string }) {
+  const formatted = useCurrency(amount, country)
+  return <span>{formatted || '...'}</span>
+}
+
+function OrderItemPrice({ price, country }: { price: number, country: string }) {
+  const formatted = useCurrency(price, country)
+  return <span>{formatted || '...'}</span>
+}
+
 export default function LiveOrdersQueue({
   serverOrders,
-  currentUser
+  currentUser,
+  country = 'Uganda'
 }: {
   serverOrders: Order[]
   currentUser: User
+  country?: string
 }) {
   const [isPending, startTransition] = useTransition()
   const [localOrders, setLocalOrders] = useState<Order[]>(serverOrders)
+
+  const shopCountry = country || 'Uganda'
 
   useEffect(() => {
     setLocalOrders(current => {
@@ -70,10 +85,9 @@ export default function LiveOrdersQueue({
     alert('Copied to clipboard!')
   }
 
-  // 2. NEW FUNCTION: PRINT ONLY RECEIPT IN NEW WINDOW
   const printReceiptOnly = (orderData: any, shopData: any) => {
     const receiptHtml = ReactDOMServer.renderToString(<Receipt order={orderData} shop={shopData} />)
-    
+
     const printWindow = window.open('', '_blank', 'width=300,height=600')
     if (!printWindow) return alert('Please allow popups for this site')
 
@@ -84,7 +98,7 @@ export default function LiveOrdersQueue({
           <style>
             @page { size: 80mm auto; margin: 0; }
             body { font-family: 'Courier New', monospace; width: 80mm; margin: 0; padding: 5mm; font-size: 12px; }
-           .no-print-bg { background: white!important; }
+         .no-print-bg { background: white!important; }
           </style>
         </head>
         <body onload="window.print(); window.close()">
@@ -100,7 +114,7 @@ export default function LiveOrdersQueue({
     setLocalOrders(current =>
       current.map(o =>
         o.id === orderId
-         ? {...o, order_status: 'processing', locked_by_cashier_id: currentUser.id, locked_at: new Date().toISOString() }
+       ? {...o, order_status: 'processing', locked_by_cashier_id: currentUser.id, locked_at: new Date().toISOString() }
           : o
       )
     )
@@ -116,7 +130,7 @@ export default function LiveOrdersQueue({
     setLocalOrders(current =>
       current.map(o =>
         o.id === orderId
-         ? {...o, order_status: 'pending', locked_by_cashier_id: null, locked_at: null }
+       ? {...o, order_status: 'pending', locked_by_cashier_id: null, locked_at: null }
           : o
       )
     )
@@ -130,7 +144,7 @@ export default function LiveOrdersQueue({
     setLocalOrders(current =>
       current.map(o =>
         o.id === orderId
-         ? {...o, order_status: 'cancelled', locked_by_cashier_id: null, cancelled_by: currentUser.id, cancelled_at: new Date().toISOString() }
+       ? {...o, order_status: 'cancelled', locked_by_cashier_id: null, cancelled_by: currentUser.id, cancelled_at: new Date().toISOString() }
           : o
       )
     )
@@ -154,18 +168,16 @@ export default function LiveOrdersQueue({
     setLocalOrders(current =>
       current.map(o =>
         o.id === orderId
-         ? {...o, order_status: 'delivered' }
+       ? {...o, order_status: 'delivered' }
           : o
       )
     )
     startTransition(async () => {
-      const res = await completeOrder(orderId) // NOW RETURNS {order, shop}
+      const res = await completeOrder(orderId)
       if (res.error) {
         alert(res.error)
       } else {
         alert('Order completed. Stock updated. Receipt printing...')
-        
-        // 3. CALL NEW PRINT FUNCTION INSTEAD OF MOUNTING COMPONENT
         if (res.order && res.shop) {
           printReceiptOnly(res.order, res.shop)
         }
@@ -233,10 +245,15 @@ export default function LiveOrdersQueue({
 
               <div className="text-right">
                 <span className="text-xl font-black text-slate-900 font-mono">
-                  UGX {order.fulfillment_type === 'pickup'? displayItemsTotal.toLocaleString() : displayTotal.toLocaleString()}
+                  <OrderTotal
+                    amount={order.fulfillment_type === 'pickup'? displayItemsTotal : displayTotal}
+                    country={shopCountry}
+                  />
                 </span>
                 {order.fulfillment_type === 'delivery' && displayDeliveryFee > 0 && (
-                  <div className="text-xs text-gray-500 mt-1">Items: {displayItemsTotal.toLocaleString()} + Del: {displayDeliveryFee.toLocaleString()}</div>
+                  <div className="text-xs text-gray-500 mt-1">
+                    Items: <OrderTotal amount={displayItemsTotal} country={shopCountry} /> + Del: <OrderTotal amount={displayDeliveryFee} country={shopCountry} />
+                  </div>
                 )}
                 {order.item_count!== undefined && (<div className="text-xs text-slate-600 mt-1">Items: {order.item_count}</div>)}
               </div>
@@ -259,7 +276,9 @@ export default function LiveOrdersQueue({
                       )}
                       <div className="flex-1">
                         <p className="text-base font-black text-slate-900">{itemName}</p>
-                        <p className="text-sm text-slate-800 font-bold">Qty: {itemQty} × UGX {Number(itemPrice).toLocaleString()}</p>
+                        <p className="text-sm text-slate-800 font-bold">
+                          Qty: {itemQty} × <OrderItemPrice price={Number(itemPrice)} country={shopCountry} />
+                        </p>
                       </div>
                     </div>
                   )

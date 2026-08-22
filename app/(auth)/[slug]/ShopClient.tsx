@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/app/utils/supabase/client' // ADDED LINE 1
 import ProductImage from '../../dashboard/ProductImage'
+import { formatCurrencySync } from '@/app/lib/currencies' // <-- ADDED ONLY THIS IMPORT
 
 type PaymentMethod = { name: string, details: string }
 type Shop = {
@@ -20,6 +21,7 @@ type Shop = {
   payment_info?: string | null
   payment_methods?: PaymentMethod[] | null
   price_per_km?: number | null
+  country?: string | null // <-- ADDED ONLY THIS FIELD
 }
 
 type Product = {
@@ -33,12 +35,15 @@ type Product = {
   has_ai_image: boolean
 }
 
+type ProductVideo = { id: string, product_id: string, video_url: string } // VIDEO ADD: NEW TYPE
+
 type CartItem = Product & { qty: number }
 
 type ShopClientProps = {
   shop: Shop
   products: Product[]
   pricePerKm: number
+  videos: ProductVideo[] // VIDEO ADD: ONLY NEW PROP
 }
 
 const DEFAULT_STORE_LAT = 0.3476; // KAMPALA FALLBACK
@@ -46,7 +51,7 @@ const DEFAULT_STORE_LNG = 32.5825; // KAMPALA FALLBACK
 const DEFAULT_PRICE_PER_KM = 1500;
 const MINIMUM_DELIVERY_FEE = 2000;
 
-export default function ShopClient({ shop, products, pricePerKm }: ShopClientProps) {
+export default function ShopClient({ shop, products, pricePerKm, videos }: ShopClientProps) { // VIDEO ADD: added videos here
   const [search, setSearch] = useState('')
   const [cart, setCart] = useState<CartItem[]>([])
   const [showCheckout, setShowCheckout] = useState(false)
@@ -61,6 +66,7 @@ export default function ShopClient({ shop, products, pricePerKm }: ShopClientPro
   // SAFE COORDINATES RESOLUTION (Prioritizes DB settings passed onto shop object)
   const STORE_LAT = shop.latitude?? DEFAULT_STORE_LAT;
   const STORE_LNG = shop.longitude?? DEFAULT_STORE_LNG;
+  const COUNTRY = shop.country || 'Uganda' // <-- ADDED ONLY THIS LINE
 
   const PRICE_PER_KM = pricePerKm || shop.price_per_km || DEFAULT_PRICE_PER_KM;
 
@@ -359,7 +365,7 @@ export default function ShopClient({ shop, products, pricePerKm }: ShopClientPro
                 </a>
               )}
               {shop.payment_info && <div>💳 {shop.payment_info}</div>}
-              <div className="text-xs text-gray-500">Delivery: UGX {PRICE_PER_KM.toLocaleString()}/KM (Min. UGX {MINIMUM_DELIVERY_FEE.toLocaleString()})</div>
+              <div className="text-xs text-gray-500">Delivery: {formatCurrencySync(PRICE_PER_KM, COUNTRY)}/KM (Min. {formatCurrencySync(MINIMUM_DELIVERY_FEE, COUNTRY)})</div> {/* <-- CHANGED ONLY THIS LINE */}
             </div>
           </div>
 
@@ -390,6 +396,7 @@ export default function ShopClient({ shop, products, pricePerKm }: ShopClientPro
               <div key={product.id} className="mb-4 break-inside-avoid bg-white/95 rounded-xl shadow-xl overflow-hidden flex-col hover:shadow-2xl transition-shadow">
                 <div className="relative w-full [&>img]:w-full [&>img]:h-auto [&>img]:block">
                   <ProductImage
+                    productId={product.id} // VIDEO ADD: THIS IS THE ONLY NEW LINE
                     src={product.ai_enhanced_image_url || product.image_url}
                     allImages={product.image_urls}
                     alt={product.name}
@@ -399,7 +406,7 @@ export default function ShopClient({ shop, products, pricePerKm }: ShopClientPro
                 </div>
                 <div className="p-3 flex-col">
                   <h3 className="font-semibold text-sm line-clamp-2 mb-1 text-slate-900">{product.name}</h3>
-                  <p className="text-lg font-bold text-slate-900 mb-2">UGX {(product.retail_price || 0).toLocaleString()}</p>
+                  <p className="text-lg font-bold text-slate-900 mb-2">{formatCurrencySync(product.retail_price || 0, COUNTRY)}</p> {/* <-- CHANGED ONLY THIS LINE */}
                   <button
                     onClick={() => addToCart(product)}
                     className="w-full bg-white/25 backdrop-blur-xl text-slate-900 border-2 border-white/40 py-2 rounded-lg font-semibold hover:bg-white/40 active:scale-95 transition shadow-lg"
@@ -418,7 +425,7 @@ export default function ShopClient({ shop, products, pricePerKm }: ShopClientPro
           onClick={() => setShowCheckout(true)}
           className="fixed bottom-6 right-6 bg-white/30 backdrop-blur-xl text-slate-900 border-2 border-white/50 px-6 py-3 rounded-full font-bold shadow-2xl hover:bg-white/40 active:scale-95 transition z-40"
         >
-          🛒 {totalItems} Items - UGX {grandTotal.toLocaleString()}
+          🛒 {totalItems} Items - {formatCurrencySync(grandTotal, COUNTRY)} {/* <-- CHANGED ONLY THIS LINE */}
         </button>
       )}
 
@@ -456,8 +463,8 @@ export default function ShopClient({ shop, products, pricePerKm }: ShopClientPro
                   </div>
                   <div className="flex-1">
                     <p className="font-semibold text-sm">{item.name}</p>
-                    <p className="text-blue-600 font-bold text-sm">UGX {(item.retail_price || 0).toLocaleString()}</p>
-                    <p className="text-slate-500 text-xs">Subtotal: UGX {((item.retail_price || 0) * item.qty).toLocaleString()}</p>
+                    <p className="text-blue-600 font-bold text-sm">{formatCurrencySync(item.retail_price || 0, COUNTRY)}</p> {/* <-- CHANGED ONLY THIS LINE */}
+                    <p className="text-slate-500 text-xs">Subtotal: {formatCurrencySync((item.retail_price || 0) * item.qty, COUNTRY)}</p> {/* <-- CHANGED ONLY THIS LINE */}
                     <div className="flex items-center gap-2 mt-1">
                       <button onClick={() => updateQty(item.id, item.qty - 1)} className="w-6 h-6 bg-slate-200 rounded hover:bg-slate-300">-</button>
                       <span className="text-sm w-6 text-center">{item.qty}</span>
@@ -471,13 +478,13 @@ export default function ShopClient({ shop, products, pricePerKm }: ShopClientPro
 
             <div className="text-xl font-bold mb-4 border-t pt-3">
               <div className="flex justify-between text-sm font-normal">
-                <span>Items:</span> <span>UGX {itemsTotal.toLocaleString()}</span>
+                <span>Items:</span> <span>{formatCurrencySync(itemsTotal, COUNTRY)}</span> {/* <-- CHANGED ONLY THIS LINE */}
               </div>
               <div className="flex justify-between text-sm font-normal">
-                <span>Delivery:</span> <span>UGX {deliveryFee.toLocaleString()}</span>
+                <span>Delivery:</span> <span>{formatCurrencySync(deliveryFee, COUNTRY)}</span> {/* <-- CHANGED ONLY THIS LINE */}
               </div>
               <div className="flex justify-between mt-1">
-                <span>Total:</span> <span>UGX {grandTotal.toLocaleString()}</span>
+                <span>Total:</span> <span>{formatCurrencySync(grandTotal, COUNTRY)}</span> {/* <-- CHANGED ONLY THIS LINE */}
               </div>
             </div>
 
@@ -524,7 +531,7 @@ export default function ShopClient({ shop, products, pricePerKm }: ShopClientPro
                     <div className="text-xs bg-green-50 p-2 rounded border-green-200">
                       <p className="font-semibold text-green-700">✅ Location Locked</p>
                       <p>Distance: {distanceKm.toFixed(2)} KM</p>
-                      <p>Delivery: UGX {deliveryFee.toLocaleString()}</p>
+                      <p>Delivery: {formatCurrencySync(deliveryFee, COUNTRY)}</p> {/* <-- CHANGED ONLY THIS LINE */}
                       <a href={`https://www.google.com/maps?q=${customerLat},${customerLng}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">View on Google Maps</a>
                     </div>
                   )}
@@ -582,7 +589,7 @@ export default function ShopClient({ shop, products, pricePerKm }: ShopClientPro
                 {cart.map(item => (
                   <div key={item.id} className="flex justify-between">
                     <span>{item.name} x{item.qty}</span>
-                    <span>UGX {((item.retail_price || 0) * item.qty).toLocaleString()}</span>
+                    <span>{formatCurrencySync((item.retail_price || 0) * item.qty, COUNTRY)}</span> {/* <-- CHANGED ONLY THIS LINE */}
                   </div>
                 ))}
               </div>
@@ -590,13 +597,13 @@ export default function ShopClient({ shop, products, pricePerKm }: ShopClientPro
 
             <div className="text-xl font-bold mb-6">
               <div className="flex justify-between text-sm font-normal">
-                <span>Items:</span> <span>UGX {itemsTotal.toLocaleString()}</span>
+                <span>Items:</span> <span>{formatCurrencySync(itemsTotal, COUNTRY)}</span> {/* <-- CHANGED ONLY THIS LINE */}
               </div>
               <div className="flex justify-between text-sm font-normal">
-                <span>Delivery:</span> <span>UGX {deliveryFee.toLocaleString()}</span>
+                <span>Delivery:</span> <span>{formatCurrencySync(deliveryFee, COUNTRY)}</span> {/* <-- CHANGED ONLY THIS LINE */}
               </div>
               <div className="flex justify-between mt-1">
-                <span>Total:</span> <span>UGX {grandTotal.toLocaleString()}</span>
+                <span>Total:</span> <span>{formatCurrencySync(grandTotal, COUNTRY)}</span> {/* <-- CHANGED ONLY THIS LINE */}
               </div>
             </div>
 

@@ -1,5 +1,6 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react' // 1. Added useEffect
+import { createClient } from '../utils/supabase/client' // 2. Added supabase client
 import CheckoutPanel from './CheckoutPanel'
 import ProductImage from './ProductImage'
 import ShareCashierLink from './ShareCashierLink'
@@ -32,6 +33,26 @@ export default function DashboardClient({
   const [showIngest, setShowIngest] = useState(false)
   const [showBranches, setShowBranches] = useState(false)
   const [bulkStockValue, setBulkStockValue] = useState<{[key: string]: string}>({})
+  const [symbol, setSymbol] = useState(shop?.country === 'Kenya'? 'KES' : shop?.country === 'Tanzania'? 'TZS' : shop?.country === 'Rwanda'? 'RWF' : 'UGX') // 3. Added symbol state - FIXED to use shop.country instantly
+  const [uploadingVideos, setUploadingVideos] = useState<{[key: string]: boolean}>({}) // VIDEO ADD
+
+  // 4. Added this useEffect to fetch currency symbol - FIXED with ilike + fallback map
+  useEffect(() => {
+    const fetchCurrency = async () => {
+      const supabase = createClient()
+      // fallback local map so it never stays UGX if DB fails
+      const localMap: any = { Kenya: 'KES', Tanzania: 'TZS', Uganda: 'UGX', Rwanda: 'RWF', Nigeria: 'NGN', Ghana: 'GHS', Zambia: 'ZMW', 'South Africa': 'ZAR' }
+      if (localMap[shop.country]) setSymbol(localMap[shop.country])
+
+      const { data } = await supabase
+    .from('currencies')
+    .select('currency_symbol')
+    .ilike('country', shop.country) // CHANGED eq to ilike so Kenya=kenya works
+    .maybeSingle()
+      if (data?.currency_symbol) setSymbol(data.currency_symbol)
+    }
+    if (shop?.country) fetchCurrency()
+  }, [shop?.country])
 
   const handleBulkStockSubmit = async (e: React.FormEvent<HTMLFormElement>, productId: string, currentStock: number) => {
     e.preventDefault()
@@ -49,6 +70,22 @@ export default function DashboardClient({
     ))
   }
 
+  const handleVideoUpload = async (e: React.ChangeEvent<HTMLInputElement>, productId: string) => { // VIDEO ADD
+    const files = e.target.files // VIDEO ADD
+    if (!files || files.length === 0) return // VIDEO ADD
+    setUploadingVideos(prev => ({...prev, [productId]: true})) // VIDEO ADD
+    const supabase = createClient() // VIDEO ADD
+    for (const file of Array.from(files)) { // VIDEO ADD
+      const fileName = `${shop.id}/${productId}/${Date.now()}-${file.name}` // VIDEO ADD
+      const { data, error } = await supabase.storage.from('product-videos').upload(fileName, file) // VIDEO ADD
+      if (data) { // VIDEO ADD
+        await supabase.from('product_videos').insert({ product_id: productId, video_url: data.path }) // VIDEO ADD
+      } // VIDEO ADD
+    } // VIDEO ADD
+    setUploadingVideos(prev => ({...prev, [productId]: false})) // VIDEO ADD
+    alert('Video uploaded!') // VIDEO ADD
+  } // VIDEO ADD
+
   const stockAlertNotificationsPanel = lowStockItems.length > 0? (
     <div className="bg-amber-500/10 border-2 border-dashed border-amber-500/30 p-5 rounded-2xl space-y-3 shadow-sm backdrop-blur-sm">
       <div className="flex items-center space-x-2 text-amber-900">
@@ -60,7 +97,7 @@ export default function DashboardClient({
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
         {lowStockItems.map((item: Product) => (
-          <div key={item.id} className="bg-white border border-amber-200 p-3 rounded-xl shadow-xs flex justify-between items-center">
+          <div key={item.id} className="bg-white border-amber-200 p-3 rounded-xl shadow-xs flex justify-between items-center">
             <div>
               <span className="font-bold text-slate-900 text-xs block truncate max-w-[140px]">{item.name}</span>
               <span className="text-xs text-slate-700 font-mono">Code: {item.barcode}</span>
@@ -101,7 +138,7 @@ export default function DashboardClient({
             >
               💳 Renew Subscription
             </Link>
-            <a href={`/${shop.slug}`} target="_blank" rel="noopener noreferrer" className="bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold px-4 py-2 rounded-xl text-sm border border-blue-200 transition">
+            <a href={`/${shop.slug}`} target="_blank" rel="noopener noreferrer" className="bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold px-4 py-2 rounded-xl text-sm border-blue-200 transition">
               🔗 Public Store: /{shop.slug}
             </a>
             <a href="/dashboard/staff" className="bg-slate-800 text-white text-sm font-bold px-4 py-2 rounded-xl hover:bg-slate-700 transition">
@@ -200,9 +237,9 @@ export default function DashboardClient({
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-          <div className="bg-slate-900/90 backdrop-blur-md text-slate-100 p-6 rounded-2xl shadow-sm border border-slate-800">
+          <div className="bg-slate-900/90 backdrop-blur-md text-slate-100 p-6 rounded-2xl shadow-sm border-slate-800">
             <span className="text-xs uppercase font-bold text-slate-300 tracking-wider">Total Handled Revenue</span>
-            <h2 className="text-3xl font-black font-mono text-emerald-400 mt-1">UGX {totalSalesRevenue.toLocaleString()}</h2>
+            <h2 className="text-3xl font-black font-mono text-emerald-400 mt-1">{symbol} {totalSalesRevenue.toLocaleString()}</h2>
           </div>
           <div className="bg-white/80 backdrop-blur-md p-6 rounded-2xl shadow-sm border">
             <span className="text-xs uppercase font-bold text-slate-700 tracking-wider">Active Branch Nodes</span>
@@ -221,7 +258,7 @@ export default function DashboardClient({
             <span className="text-xl">💳</span>
             <h3 className="font-bold text-base">Point of Sale (POS) Terminal Interface</h3>
           </div>
-          <p className="text-xs text-slate-700">Initiate physical orders directly with real-time sync across Uganda's branches using the module panel below.</p>
+          <p className="text-xs text-slate-700">Initiate physical orders directly with real-time sync across {shop.country || "Uganda"}'s branches using the module panel below.</p>
           <CheckoutPanel
             products={products}
             shopId={shop.id}
@@ -248,7 +285,7 @@ export default function DashboardClient({
           </button>
           {showBranches && (
             <div className="p-6 pt-0 space-y-4 border-t">
-              <p className="text-xs text-slate-700">Quickly spin up automated sales points across major administrative networks in Uganda.</p>
+              <p className="text-xs text-slate-700">Quickly spin up automated sales points across major administrative networks in {shop.country || "Uganda"}.</p>
               <form action={createBranch} className="space-y-3">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Branch Name</label>
@@ -307,7 +344,7 @@ export default function DashboardClient({
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Cost (UGX)</label>
+                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Cost ({symbol})</label>
                       <input
                         type="number"
                         name="costPrice"
@@ -318,7 +355,7 @@ export default function DashboardClient({
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Retail (UGX)</label>
+                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Retail ({symbol})</label>
                       <input
                         type="number"
                         name="retailPrice"
@@ -377,6 +414,12 @@ export default function DashboardClient({
                     />
                     <p className="text-xs text-slate-700 mt-1">Select multiple images: red, blue, size variants, etc. First image = thumbnail</p>
                   </div>
+
+                  <div> {/* VIDEO ADD */}
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">Product Videos Optional</label> {/* VIDEO ADD */}
+                    <input type="file" name="productVideos" multiple accept="video/*" className="w-full text-sm p-2 border rounded-xl bg-slate-50" /> {/* VIDEO ADD */}
+                    <p className="text-xs text-slate-700 mt-1">Upload 10s videos. Shows ▶️ on product card. Optional</p> {/* VIDEO ADD */}
+                  </div> {/* VIDEO ADD */}
 
                   <div>
                     <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">AI Studio Enhanced Image URL</label>
@@ -448,7 +491,7 @@ export default function DashboardClient({
                   <div className="space-y-4 max-h-[600px] overflow-y-auto pr-1">
                     {products.map((item: Product) => {
                       const displayImageUrl = item.use_ai_enhanced
-                     ? item.image_url_ai_enhanced || item.image_url || item.image_urls?.[0]
+                 ? item.image_url_ai_enhanced || item.image_url || item.image_urls?.[0]
                         : item.image_url || item.image_urls?.[0] || item.image_url_ai_enhanced
 
                       return (
@@ -456,6 +499,7 @@ export default function DashboardClient({
                           <div className="flex justify-between items-start">
                             <div className="flex items-start space-x-3">
                               <ProductImage
+                                productId={item.id} // VIDEO ADD: THIS IS THE ONLY CHANGE
                                 src={displayImageUrl}
                                 allImages={item.image_urls || (item.image_url? [item.image_url] : [])}
                                 alt={item.name}
@@ -486,9 +530,15 @@ export default function DashboardClient({
                             </form>
                           </div>
 
+                          <div> {/* VIDEO ADD */}
+                            <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">Add More Videos</label> {/* VIDEO ADD */}
+                            <input type="file" multiple accept="video/*" onChange={(e) => handleVideoUpload(e, item.id)} className="w-full text-xs p-1 border rounded" /> {/* VIDEO ADD */}
+                            {uploadingVideos[item.id] && <p className="text-xs text-blue-600">Uploading...</p>} {/* VIDEO ADD */}
+                          </div> {/* VIDEO ADD */}
+
                           <div className="grid grid-cols-2 md:grid-cols-6 gap-4 pt-2 border-t border-slate-100 text-xs">
                             <div className="space-y-1">
-                              <span className="text-slate-700 font-bold block uppercase tracking-wider">Cost Price (UGX)</span>
+                              <span className="text-slate-700 font-bold block uppercase tracking-wider">Cost Price ({symbol})</span>
                               <form action={updatePrice} className="flex items-center space-x-1">
                                 <input type="hidden" name="id" value={item.id} />
                                 <input type="hidden" name="field" value="cost_price" />
@@ -504,7 +554,7 @@ export default function DashboardClient({
                             </div>
 
                             <div className="space-y-1">
-                              <span className="text-slate-700 font-bold block uppercase tracking-wider">Retail Price (UGX)</span>
+                              <span className="text-slate-700 font-bold block uppercase tracking-wider">Retail Price ({symbol})</span>
                               <form action={updatePrice} className="flex items-center space-x-1">
                                 <input type="hidden" name="id" value={item.id} />
                                 <input type="hidden" name="field" value="retail_price" />

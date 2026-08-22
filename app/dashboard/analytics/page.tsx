@@ -1,5 +1,6 @@
 import { createClient } from '../../utils/supabase/server'
 import { redirect } from 'next/navigation'
+import { formatCurrencySync } from '@/app/lib/currencies'
 
 type CashierLog = {
   cashier_id: string
@@ -18,7 +19,7 @@ export default async function CashierAnalyticsPage() {
 
   const { data: shop, error: shopError } = await supabase
    .from('shops')
-   .select('id')
+   .select('id, country')
    .eq('owner_id', user.id)
    .maybeSingle()
 
@@ -27,7 +28,8 @@ export default async function CashierAnalyticsPage() {
     return redirect('/signup?error=Create a shop first')
   }
 
-  // Fix: Tell TS exactly what this returns
+  const COUNTRY = shop.country || 'Uganda'
+
   const { data: performanceLogs, error: logsError } = await supabase
    .from('cashier_performance_tracker')
    .select('*')
@@ -37,7 +39,6 @@ export default async function CashierAnalyticsPage() {
 
   if (logsError) console.error('Performance logs failed:', logsError)
 
-  // Now safe because performanceLogs is CashierLog[] | null
   const logs = performanceLogs ?? []
 
   return (
@@ -92,7 +93,7 @@ export default async function CashierAnalyticsPage() {
                         {txCount} sales
                       </td>
                       <td className="py-4 text-right font-black text-indigo-600 font-mono text-base">
-                        UGX {revenueGenerated.toLocaleString('en-US')}
+                        {formatCurrencySync(revenueGenerated, COUNTRY)}
                       </td>
                     </tr>
                   )

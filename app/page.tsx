@@ -25,7 +25,7 @@ export default function Home() {
       {/* Main Glassmorphism Presentation Container Card */}
       <div className="w-full max-w-3xl text-center space-y-6 my-auto z-10 py-12 px-6 rounded-3xl bg-slate-950/40 border border-white/5 backdrop-blur-md shadow-2xl">
         <div className="inline-flex items-center space-x-2 bg-blue-500/10 text-blue-400 font-semibold px-4 py-1.5 rounded-full text-xs border border-blue-500/20 tracking-wide uppercase mx-auto">
-          <span>🇺🇬 Crafted for Ugandan Retailers</span>
+          <span>🌍 Crafted for Africa</span>
           <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
         </div>
         
@@ -34,7 +34,7 @@ export default function Home() {
         </h1>
         
         <p className="text-sm sm:text-base text-slate-300 max-w-2xl mx-auto font-normal leading-relaxed">
-          Cloud-based POS barcode scanning for your cashiers, multi-branch tracking for you, and automated e-commerce web storefronts that send orders straight to WhatsApp.
+          Cloud-based POS barcode scanning for your cashiers, multi-branch tracking for you, and automated e-commerce web storefronts that send orders straight to the system.
         </p>
 
         <div className="flex flex-col sm:flex-row gap-4 justify-center items-center pt-6 max-w-md mx-auto">

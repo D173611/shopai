@@ -5,6 +5,7 @@ import { createClient } from '@/app/utils/supabase/client'
 import { BrowserMultiFormatReader } from '@zxing/library'
 import jsPDF from 'jspdf'
 import { Product } from './types'
+import { formatCurrencySync } from '@/app/lib/currencies'
 
 interface CartItem {
   id: string
@@ -39,9 +40,10 @@ export default function CheckoutPanel({
   const [selectedProducts, setSelectedProducts] = useState<Product[]>([])
   const [barcodeSize, setBarcodeSize] = useState<BarcodeSize>('medium')
   const [shopId, setShopId] = useState<string | null>(propShopId || null)
-  const [shopDetails, setShopDetails] = useState<{name: string, address: string, phone: string, logo_url: string} | null>(null)
-  
-  // ADDED FOR POS CUSTOMER INFO
+  const [shopDetails, setShopDetails] = useState<{name: string, address: string, phone: string, logo_url: string, country: string} | null>(null)
+  const [formattedTotals, setFormattedTotals] = useState<{total: string, change: string}>({total: '', change: ''})
+  const [shopCurrencyCode, setShopCurrencyCode] = useState<string>('') // FIXED: was 'UGX' causing instant UGX flash
+
   const [customerName, setCustomerName] = useState<string>('Walk-in Customer')
   const [customerPhone, setCustomerPhone] = useState<string>('')
 
@@ -50,20 +52,22 @@ export default function CheckoutPanel({
   const supabase = createClient()
   const codeReader = useRef(new BrowserMultiFormatReader())
 
+  const shopCountry = shopDetails?.country || '' // FIXED: was 'Uganda' hardcoded
+
   useEffect(() => {
     const getShopData = async () => {
       try {
         let currentShopId = propShopId
 
         if (!currentShopId) {
-          const { data } = await supabase.auth.getUser() // FIXED: no nested destructuring
+          const { data } = await supabase.auth.getUser()
           const user = data.user
           if (user) {
             const { data: profile } = await supabase
-           .from('user_profiles')
-           .select('shop_id')
-           .eq('id', user.id)
-           .maybeSingle()
+.from('user_profiles')
+.select('shop_id')
+.eq('id', user.id)
+.maybeSingle()
 
             currentShopId = profile?.shop_id
             if (currentShopId) setShopId(currentShopId)
@@ -72,11 +76,24 @@ export default function CheckoutPanel({
 
         if (currentShopId) {
           const { data: shop } = await supabase
-         .from('shops')
-         .select('name, address, phone, logo_url')
-         .eq('id', currentShopId)
-         .maybeSingle()
-          if (shop) setShopDetails(shop)
+.from('shops')
+.select('name, address, phone, logo_url, country')
+.eq('id', currentShopId)
+.maybeSingle()
+          if (shop) {
+            setShopDetails(shop)
+
+            // FIXED: fallback map + ilike so Kenya never stays UGX
+            const localCurrencyMap: any = { Kenya: 'KES', Tanzania: 'TZS', Uganda: 'UGX', Rwanda: 'RWF', Nigeria: 'NGN', Ghana: 'GHS', Zambia: 'ZMW', 'South Africa': 'ZAR' }
+            if (localCurrencyMap[shop.country]) setShopCurrencyCode(localCurrencyMap[shop.country])
+
+            const { data: currency } = await supabase
+.from('currencies')
+.select('currency_code')
+.ilike('country', shop.country)
+.maybeSingle()
+            if (currency?.currency_code) setShopCurrencyCode(currency.currency_code)
+          }
         }
       } catch (e) {
         console.error("Shop load error:", e)
@@ -84,6 +101,20 @@ export default function CheckoutPanel({
     }
     getShopData()
   }, [propShopId, supabase])
+
+  useEffect(() => {
+    const run = () => {
+      const total = cart.reduce((sum, item) => sum + item.retail_price * item.quantity, 0)
+      const cashAmount = parseFloat(cashTendered) || 0
+      const change = cashAmount > total? cashAmount - total : 0
+      const countryForFormat = shopCountry || shopDetails?.country || 'Kenya' // FIXED: never fallback to Uganda
+      setFormattedTotals({
+        total: formatCurrencySync(total, countryForFormat),
+        change: formatCurrencySync(change, countryForFormat)
+      })
+    }
+    run()
+  }, [cart, cashTendered, shopCountry, shopDetails?.country])
 
   const addToCart = useCallback((product: Product) => {
     if (product.stock_quantity <= 0) {
@@ -155,13 +186,11 @@ export default function CheckoutPanel({
 
   const startCameraScan = async () => {
     setIsScanning(true)
-
     if (location.protocol!== 'https:' && location.hostname!== 'localhost') {
       alert('Camera needs HTTPS. Deploy to Vercel or use https://localhost')
       setIsScanning(false)
       return
     }
-
     try {
       const videoInputDevices = await codeReader.current.listVideoInputDevices()
       if (videoInputDevices.length === 0) {
@@ -169,9 +198,7 @@ export default function CheckoutPanel({
         setIsScanning(false)
         return
       }
-
       const selectedDeviceId = videoInputDevices[0]?.deviceId
-
       await codeReader.current.decodeFromVideoDevice(
         selectedDeviceId,
         videoRef.current!,
@@ -196,7 +223,6 @@ export default function CheckoutPanel({
 
   const generateBarcodePDF = () => {
     const productsToPrint = selectedProducts.length > 0? selectedProducts : products.filter(p => p.barcode)
-
     if (productsToPrint.length === 0) {
       alert('No products with barcodes selected')
       return
@@ -218,13 +244,13 @@ export default function CheckoutPanel({
 
     productsToPrint.forEach((product, idx) => {
       if (idx % (config.cols * config.rows) === 0 && idx!== 0) doc.addPage()
-
       const posOnPage = idx % (config.cols * config.rows)
       const row = Math.floor(posOnPage / config.cols)
       const col = posOnPage % config.cols
-
       const x = col * cellW + 2
       const y = row * cellH + 2
+
+      const formattedPrice = formatCurrencySync(product.retail_price, shopCountry || 'Kenya')
 
       doc.rect(x, y, cellW - 4, cellH - 4)
       doc.setFontSize(config.font)
@@ -234,9 +260,8 @@ export default function CheckoutPanel({
       doc.text(`*${product.barcode}*`, x + 2, y + cellH - 8, { maxWidth: cellW - 8 })
       doc.setFont('helvetica', 'bold')
       doc.setFontSize(config.font)
-      doc.text(`UGX ${product.retail_price.toLocaleString()}`, x + 2, y + cellH - 4)
+      doc.text(formattedPrice, x + 2, y + cellH - 4)
     })
-
     doc.save(`barcodes-${barcodeSize}-${Date.now()}.pdf`)
   }
 
@@ -278,29 +303,35 @@ export default function CheckoutPanel({
   const clearCart = () => {
     setCart([])
     setCashTendered('')
-    setCustomerName('Walk-in Customer') // RESET
-    setCustomerPhone('') // RESET
+    setCustomerName('Walk-in Customer')
+    setCustomerPhone('')
   }
 
   const totalAmount = cart.reduce((sum, item) => sum + item.retail_price * item.quantity, 0)
   const cashAmount = parseFloat(cashTendered) || 0
   const changeDue = cashAmount > totalAmount? cashAmount - totalAmount : 0
 
-  // AUTO PRINT - HIDDEN WINDOW
   const printThermalReceipt = (orderNumber: string) => {
     try {
       const receiptWindow = window.open('', '_blank', 'width=1,height=1,left=-10000,top=-10000')
       if (!receiptWindow) return
+
+      const countryForFormat = shopCountry || shopDetails?.country || 'Kenya'
+      const formattedCart = cart.map(item => ({
+   ...item,
+        price: formatCurrencySync(item.retail_price, countryForFormat),
+        lineTotal: formatCurrencySync(item.retail_price * item.quantity, countryForFormat)
+      }))
 
       const receiptHTML = `
         <html>
           <head>
             <title>Receipt ${orderNumber}</title>
             <style>
-              @media print { @page { size: 80mm auto; margin: 0; } body { width: 72mm; } }
+              @media print { @page { size: 80mm auto; margin: 0; } body { width: 72mm; }
               body { font-family: 'Courier New', monospace; padding: 4px; width: 72mm; margin: 0; font-size: 11px; line-height: 1.2; }
-            .center { text-align: center; }.bold { font-weight: bold; font-size: 12px; }.line { border-top: 1px dashed #000; margin: 4px 0; }
-            .row { display: flex; justify-content: space-between; }
+.center { text-align: center; }.bold { font-weight: bold; font-size: 12px; }.line { border-top: 1px dashed #000; margin: 4px 0; }
+.row { display: flex; justify-content: space-between; }
             </style>
           </head>
           <body onload="window.print(); setTimeout(() => window.close(), 800)">
@@ -316,14 +347,14 @@ export default function CheckoutPanel({
             <div class="row"><span>Receipt:</span><span class="bold">#${orderNumber}</span></div>
             <div class="row"><span>Date:</span><span>${new Date().toLocaleString()}</span></div>
             <div class="line"></div>
-            ${cart.map(item => `
+            ${formattedCart.map(item => `
               <div>${item.name.substring(0, 24)}</div>
-              <div class="row"><span>${item.quantity} x ${item.retail_price.toLocaleString()}</span><span>${(item.retail_price * item.quantity).toLocaleString()}</span></div>
+              <div class="row"><span>${item.quantity} x ${item.price}</span><span>${item.lineTotal}</span></div>
             `).join('')}
             <div class="line"></div>
-            <div class="row bold"><span>TOTAL:</span><span>UGX ${totalAmount.toLocaleString()}</span></div>
-            <div class="row"><span>CASH:</span><span>UGX ${cashAmount.toLocaleString()}</span></div>
-            <div class="row bold"><span>CHANGE:</span><span>UGX ${changeDue.toLocaleString()}</span></div>
+            <div class="row bold"><span>TOTAL:</span><span>${formattedTotals.total}</span></div>
+            <div class="row"><span>CASH:</span><span>${formatCurrencySync(cashAmount, countryForFormat)}</span></div>
+            <div class="row bold"><span>CHANGE:</span><span>${formattedTotals.change}</span></div>
             <div class="line"></div>
             <div class="center">Thank you for shopping with us!</div>
           </body>
@@ -341,7 +372,6 @@ export default function CheckoutPanel({
     if (cart.length === 0) return alert("Cart is empty")
     if (cashAmount < totalAmount) return alert("Insufficient cash")
 
-    // FIXED: Get user without nested destructuring
     const { data } = await supabase.auth.getUser()
     const user = data.user
     if (!user) return alert("Cashier not logged in")
@@ -349,7 +379,7 @@ export default function CheckoutPanel({
     try {
       const { data, error } = await supabase.rpc('create_pos_order', {
         p_items: cart.map(item => ({
-          id: item.id, // ADDED THIS - REQUIRED FOR STOCK UPDATE
+          id: item.id,
           name: item.name,
           qty: item.quantity,
           price: item.retail_price,
@@ -365,8 +395,6 @@ export default function CheckoutPanel({
         p_customer_lng: null,
         p_google_maps_link: null,
         p_fulfillment_type: 'pos',
-        
-        // ADDED THESE 3 TO FIX "Missing required fields"
         p_user_id: user.id,
         p_customer_name: customerName,
         p_customer_phone: customerPhone,
@@ -375,15 +403,14 @@ export default function CheckoutPanel({
 
       if (error) throw error
 
-      printThermalReceipt(data.order_number) // AUTO PRINT
+      await printThermalReceipt(data.order_number)
 
-      // SALE COMPLETE ALERT
       alert(`Sale Complete!
 Order: ${data.order_number}
-Total: UGX ${totalAmount.toLocaleString()}
-Change: UGX ${changeDue.toLocaleString()}`)
+Total: ${formattedTotals.total}
+Change: ${formattedTotals.change}`)
 
-      clearCart() // INSTANT CLEAR
+      clearCart()
 
     } catch (err: any) {
       console.error('RPC Error:', err)
@@ -393,7 +420,7 @@ Change: UGX ${changeDue.toLocaleString()}`)
 
   return (
     <div className="w-full">
-      <p className="text-sm text-gray-600 mb-4">Initiate physical orders directly with real-time sync across Uganda's branches.</p>
+      <p className="text-sm text-gray-600 mb-4">Initiate physical orders directly with real-time sync across {shopCountry || shopDetails?.country || 'your'} branches.</p>
 
       <div className="w-full bg-white rounded-xl shadow-lg border-gray-200 p-5 text-black">
         <div className="flex justify-between items-center mb-4">
@@ -463,7 +490,7 @@ Change: UGX ${changeDue.toLocaleString()}`)
                       <p className="text-xs text-gray-500 mt-1">Stock: {product.stock_quantity}</p>
                     </div>
                     <div className="mt-3 flex w-full justify-between items-center">
-                      <span className="text-sm font-bold text-blue-600">UGX {product.retail_price.toLocaleString()}</span>
+                      <span className="text-sm font-bold text-blue-600">{formatCurrencySync(product.retail_price, shopCountry || shopDetails?.country || 'Kenya')}</span>
                       <button
                         onClick={() => addToCart(product)}
                         disabled={product.stock_quantity === 0}
@@ -484,7 +511,6 @@ Change: UGX ${changeDue.toLocaleString()}`)
               <button onClick={clearCart} className="text-xs text-red-500 hover:underline font-semibold">Clear</button>
             </div>
 
-            {/* ADDED: Customer inputs */}
             <div className="mb-3">
               <input
                 type="text"
@@ -510,13 +536,13 @@ Change: UGX ${changeDue.toLocaleString()}`)
                   <div key={item.id} className="flex justify-between items-center bg-gray-50 p-2 rounded-lg border text-xs">
                     <div className="flex-1 min-w-0 pr-2">
                       <h5 className="font-semibold text-gray-800 truncate">{item.name}</h5>
-                      <p className="text-gray-500">UGX {item.retail_price.toLocaleString()} x {item.quantity}</p>
+                      <p className="text-gray-500">{formatCurrencySync(item.retail_price, shopCountry || shopDetails?.country || 'Kenya')} x {item.quantity}</p>
                     </div>
                     <div className="flex items-center gap-1.5">
                       <button onClick={() => updateQuantity(item.id, -1)} className="w-5 h-5 rounded bg-white border font-bold">-</button>
                       <button onClick={() => updateQuantity(item.id, 1)} className="w-5 h-5 rounded bg-white border font-bold">+</button>
                     </div>
-                    <p className="font-bold text-gray-700 ml-2">UGX {(item.retail_price * item.quantity).toLocaleString()}</p>
+                    <p className="font-bold text-gray-700 ml-2">{formatCurrencySync(item.retail_price * item.quantity, shopCountry || shopDetails?.country || 'Kenya')}</p>
                   </div>
                 ))
               )}
@@ -525,12 +551,12 @@ Change: UGX ${changeDue.toLocaleString()}`)
             <div className="border-t pt-3">
               <div className="flex justify-between text-sm font-bold text-gray-800 mb-2">
                 <span>Total</span>
-                <span className="text-blue-600">UGX {totalAmount.toLocaleString()}</span>
+                <span className="text-blue-600">{formattedTotals.total || '...'}</span>
               </div>
 
               <input
                 type="number"
-                placeholder="Cash Given UGX"
+                placeholder={`Cash Given ${shopCurrencyCode || 'KES'}`}
                 className="w-full p-2 border-gray-300 rounded bg-white text-sm mb-2"
                 value={cashTendered}
                 onChange={(e) => setCashTendered(e.target.value)}
@@ -538,7 +564,7 @@ Change: UGX ${changeDue.toLocaleString()}`)
 
               <div className="flex justify-between text-sm font-semibold text-gray-700 bg-gray-100 p-2 rounded mb-3">
                 <span>Change:</span>
-                <span className="font-bold text-emerald-600">UGX {changeDue.toLocaleString()}</span>
+                <span className="font-bold text-emerald-600">{formattedTotals.change || '...'}</span>
               </div>
 
               <button

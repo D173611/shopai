@@ -1,6 +1,7 @@
 import { createClient } from '@/app/utils/supabase/server'
 import { redirect } from 'next/navigation'
 import { handleRegisterCashier, toggleCashierStatus, deleteCashier, changeCashierPassword } from './actions'
+import { formatCurrencySync } from '@/app/lib/currencies'
 
 type CashierPerformance = {
   cashier_id: string
@@ -37,13 +38,15 @@ export default async function CashierAnalyticsPage({
 
   const { data: shop, error: shopError } = await supabase
     .from('shops')
-    .select('id')
+    .select('id, country')
     .eq('owner_id', user.id)
     .maybeSingle()
 
   if (shopError || !shop) {
     return redirect('/signup?error=Create a shop first')
   }
+
+  const COUNTRY = shop.country || 'Uganda'
 
   const { data: fetchedBranches } = await supabase
     .from('branches')
@@ -169,22 +172,22 @@ export default async function CashierAnalyticsPage({
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-3 border-t border-slate-700/30">
                     <div className="bg-slate-900/40 p-3 rounded-lg border border-slate-700/30">
                       <span className="text-xs text-slate-400 font-bold uppercase block">Today</span>
-                      <p className="text-sm font-black text-slate-100 font-mono mt-1">UGX {cashier.revenue_today.toLocaleString()}</p>
+                      <p className="text-sm font-black text-slate-100 font-mono mt-1">{formatCurrencySync(cashier.revenue_today, COUNTRY)}</p>
                       <p className="text-xs text-slate-400">{cashier.tx_today} tx</p>
                     </div>
                     <div className="bg-slate-900/40 p-3 rounded-lg border border-slate-700/30">
                       <span className="text-xs text-slate-400 font-bold uppercase block">This Week</span>
-                      <p className="text-sm font-black text-slate-100 font-mono mt-1">UGX {cashier.revenue_week.toLocaleString()}</p>
+                      <p className="text-sm font-black text-slate-100 font-mono mt-1">{formatCurrencySync(cashier.revenue_week, COUNTRY)}</p>
                       <p className="text-xs text-slate-400">{cashier.tx_week} tx</p>
                     </div>
                     <div className="bg-slate-900/40 p-3 rounded-lg border border-slate-700/30">
                       <span className="text-xs text-slate-400 font-bold uppercase block">This Month</span>
-                      <p className="text-sm font-black text-slate-100 font-mono mt-1">UGX {cashier.revenue_month.toLocaleString()}</p>
+                      <p className="text-sm font-black text-slate-100 font-mono mt-1">{formatCurrencySync(cashier.revenue_month, COUNTRY)}</p>
                       <p className="text-xs text-slate-400">{cashier.tx_month} tx</p>
                     </div>
                     <div className="bg-indigo-900/30 p-3 rounded-lg border border-indigo-700/30">
                       <span className="text-xs text-indigo-300 font-bold uppercase block">All Time</span>
-                      <p className="text-sm font-black text-indigo-200 font-mono mt-1">UGX {cashier.total_revenue_generated.toLocaleString()}</p>
+                      <p className="text-sm font-black text-indigo-200 font-mono mt-1">{formatCurrencySync(cashier.total_revenue_generated, COUNTRY)}</p>
                       <p className="text-xs text-indigo-400">{cashier.total_transactions_processed} tx</p>
                     </div>
                   </div>

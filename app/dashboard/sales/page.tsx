@@ -13,7 +13,7 @@ export default async function SalesLedgerPage({ searchParams }: Props) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return redirect('/login')
 
-  const { data: shop } = await supabase.from('shops').select('id').eq('owner_id', user.id).single()
+  const { data: shop } = await supabase.from('shops').select('id, country').eq('owner_id', user.id).single() // CHANGED: added country
   if (!shop) return redirect('/signup?error=No shop found')
 
   const { data: allBranches } = await supabase.from('branches').select('id, name').eq('shop_id', shop.id)
@@ -65,6 +65,7 @@ export default async function SalesLedgerPage({ searchParams }: Props) {
       shopId={shop.id}
       filter={filter || 'all'}
       selectedBranch={branch || 'all'}
+      country={shop.country || 'Uganda'} // ADDED ONLY THIS LINE
     />
   )
 }

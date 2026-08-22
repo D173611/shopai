@@ -1,6 +1,7 @@
 'use client'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
+import { formatCurrencySync } from '@/app/lib/currencies' // <-- CHANGED THIS LINE
 
 type DebtItem = {
   product_name: string
@@ -18,12 +19,14 @@ type DebtReceipt = {
   debt_items: DebtItem[]
   last_updated: string
   shop_name: string
+  shop_country?: string
 }
 
 export default function ReceiptButton({ debt }: { debt: DebtReceipt }) {
-  const downloadDebtReceipt = () => {
+  const downloadDebtReceipt = () => { // no async
     const doc = new jsPDF()
     const balance = Number(debt.total_debt_amount) - Number(debt.paid_amount)
+    const country = debt.shop_country || 'Uganda'
 
     doc.setFontSize(18)
     doc.text(debt.shop_name, 14, 20)
@@ -37,27 +40,28 @@ export default function ReceiptButton({ debt }: { debt: DebtReceipt }) {
     doc.text(`Name: ${debt.customer_name}`, 14, 54)
     doc.text(`Phone: ${debt.customer_phone}`, 14, 60)
 
+    // FIXED: use formatCurrencySync instead of formatCurrency
     const items = debt.debt_items.map(item => [
       item.product_name,
       item.quantity.toString(),
-      `UGX ${Number(item.unit_price).toLocaleString()}`,
-      `UGX ${(item.quantity * item.unit_price).toLocaleString()}`
+      formatCurrencySync(Number(item.unit_price), country), // <-- CHANGED
+      formatCurrencySync(item.quantity * item.unit_price, country) // <-- CHANGED
     ])
 
     autoTable(doc, {
       startY: 70,
       head: [['Item', 'Qty', 'Unit Price', 'Total']],
-      body: items,
+      body: items, // now this is string[][]
       theme: 'striped',
       headStyles: { fillColor: [30, 41, 59] }
     })
 
     const finalY = (doc as any).lastAutoTable.finalY + 10
     doc.setFontSize(11)
-    doc.text(`Total Credit: UGX ${Number(debt.total_debt_amount).toLocaleString()}`, 14, finalY)
-    doc.text(`Amount Paid: UGX ${Number(debt.paid_amount).toLocaleString()}`, 14, finalY + 7)
+    doc.text(`Total Credit: ${formatCurrencySync(Number(debt.total_debt_amount), country)}`, 14, finalY) // <-- CHANGED
+    doc.text(`Amount Paid: ${formatCurrencySync(Number(debt.paid_amount), country)}`, 14, finalY + 7) // <-- CHANGED
     doc.setFontSize(12)
-    doc.text(`Balance Due: UGX ${balance.toLocaleString()}`, 14, finalY + 15)
+    doc.text(`Balance Due: ${formatCurrencySync(balance, country)}`, 14, finalY + 15) // <-- CHANGED
     doc.setFontSize(10)
     doc.text(`Status: ${debt.status.toUpperCase()}`, 14, finalY + 23)
 

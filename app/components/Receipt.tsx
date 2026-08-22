@@ -1,8 +1,10 @@
 'use client'
+
 import { useEffect, useRef, useState, useCallback } from 'react'
 import jsPDF from 'jspdf'
 import html2canvas from 'html2canvas'
 import { createClient } from '@/app/utils/supabase/client'
+import { formatCurrencySync } from '@/app/lib/currencies' // <-- CHANGED: was formatCurrency
 
 type ReceiptProps = {
   shop: {
@@ -10,6 +12,7 @@ type ReceiptProps = {
     logo_url?: string | null
     tin_number?: string | null
     location?: string | null
+    country?: string // <-- 2. ADD THIS
   }
   order: {
     receipt_number: string
@@ -17,9 +20,10 @@ type ReceiptProps = {
     items: { name: string, qty: number, price: number, total: number }[]
     total: number
     delivery_fee: number
-    type: 'pos' | 'delivery'
+    fulfillment_type: 'shop' | 'delivery'
     customer_phone?: string
     cashier_name?: string
+    google_maps_link?: string | null
   }
 }
 
@@ -28,9 +32,32 @@ export default function Receipt({ shop, order }: ReceiptProps) {
   const [isProcessing, setIsProcessing] = useState(false)
   const hasRun = useRef(false)
 
-  const formatUGX = (n: number) => `UGX ${n.toLocaleString('en-UG')}`
+  // 3. STATE FOR FORMATTED CURRENCIES
+  const [formatted, setFormatted] = useState<{
+    total: string,
+    delivery: string,
+    items: { price: string, total: string }[]
+  }>({ total: '', delivery: '', items: [] })
+
+  const shopCountry = shop.country || 'Uganda' // fallback
   const date = new Date(order.created_at).toLocaleDateString('en-UG')
   const time = new Date(order.created_at).toLocaleTimeString('en-UG', { hour: '2-digit', minute: '2-digit' })
+
+  // 4. FORMAT ALL PRICES ONCE WHEN COMPONENT LOADS
+  useEffect(() => {
+    const run = () => { // <-- REMOVED async
+      const items = order.items.map((item) => ({ // <-- REMOVED Promise.all + await
+        price: formatCurrencySync(item.price, shopCountry), // <-- CHANGED
+        total: formatCurrencySync(item.total, shopCountry) // <-- CHANGED
+      }))
+      setFormatted({
+        total: formatCurrencySync(order.total, shopCountry), // <-- CHANGED
+        delivery: formatCurrencySync(order.delivery_fee, shopCountry), // <-- CHANGED
+        items
+      })
+    }
+    run()
+  }, [order.items, order.total, order.delivery_fee, shopCountry])
 
   const formatPhone = (phone: string) => {
     if (phone.startsWith('0')) return '256' + phone.slice(1)
@@ -41,12 +68,11 @@ export default function Receipt({ shop, order }: ReceiptProps) {
   const uploadPDFToSupabase = useCallback(async (blob: Blob, filename: string) => {
     const supabase = createClient()
     const { data, error } = await supabase.storage
-    .from('receipts')
-    .upload(filename, blob, { upsert: true, contentType: 'application/pdf' })
+.from('receipts')
+.upload(filename, blob, { upsert: true, contentType: 'application/pdf' })
 
     if(error) throw error
-    
-    // FIXED: was missing a } and wrong destructuring
+
     const { data: urlData } = supabase.storage.from('receipts').getPublicUrl(data.path)
     return urlData.publicUrl
   }, [])
@@ -84,15 +110,16 @@ export default function Receipt({ shop, order }: ReceiptProps) {
         window.print()
         const pdfUrl = await downloadPDF()
 
-        if(order.type === 'delivery' && order.customer_phone && pdfUrl) {
+        if(order.fulfillment_type === 'delivery' && order.customer_phone && pdfUrl) {
           const formattedPhone = formatPhone(order.customer_phone)
-          await fetch('/api/send-whatsapp', {
+          await fetch('/api/send-whatsapp-receipt', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({
               phone: formattedPhone,
               pdfUrl,
-              receiptNumber: order.receipt_number
+              receiptNumber: order.receipt_number,
+              shop_country: shopCountry // <-- ADDED: so WhatsApp msg uses correct currency
             })
           })
         }
@@ -104,7 +131,7 @@ export default function Receipt({ shop, order }: ReceiptProps) {
       }
     }
     run()
-  }, [order, downloadPDF]) // FIXED: added deps
+  }, [order, downloadPDF, shopCountry]) // <-- ADDED shopCountry
 
   return (
     <div ref={receiptRef} className="max-w-[320px] mx-auto bg-white text-black p-4 font-mono text-[12px] leading-tight">
@@ -117,7 +144,7 @@ export default function Receipt({ shop, order }: ReceiptProps) {
       <div className="text-[11px] mt-2 space-y-0.5">
         <div className="flex justify-between"><span>Receipt:</span><span>{order.receipt_number}</span></div>
         <div className="flex justify-between"><span>Date:</span><span>{date} {time}</span></div>
-        <div className="flex justify-between"><span>Type:</span><span className="uppercase font-bold">{order.type}</span></div>
+        <div className="flex justify-between"><span>Type:</span><span className="uppercase font-bold">{order.fulfillment_type}</span></div>
       </div>
 
       <div className="border-t border-dashed mt-2 pt-2">
@@ -125,24 +152,32 @@ export default function Receipt({ shop, order }: ReceiptProps) {
           <div key={i} className="mb-1.5">
             <div className="truncate">{item.name}</div>
             <div className="flex justify-between text-[11px]">
-              <span>{item.qty} x {formatUGX(item.price)}</span>
-              <span>{formatUGX(item.total)}</span>
+              {/* 5. REMOVED UGX AND USED STATE */}
+              <span>{item.qty} x {formatted.items[i]?.price || '...'}</span>
+              <span>{formatted.items[i]?.total || '...'}</span>
             </div>
           </div>
         ))}
       </div>
 
-      {order.type === 'delivery' && order.delivery_fee > 0 && (
+      {order.fulfillment_type === 'delivery' && order.delivery_fee > 0 && (
         <div className="flex justify-between text-[11px] mt-1">
-          <span>Delivery Fee</span><span>{formatUGX(order.delivery_fee)}</span>
+          <span>Delivery Fee</span><span>{formatted.delivery || '...'}</span> {/* 6. CHANGED */}
         </div>
       )}
 
       <div className="border-t border-dashed mt-2 pt-2 font-bold">
         <div className="flex justify-between text-sm">
-          <span>TOTAL</span><span>{formatUGX(order.total)}</span>
+          <span>TOTAL</span><span>{formatted.total || '...'}</span> {/* 7. CHANGED */}
         </div>
       </div>
+
+      {order.fulfillment_type === 'delivery' && order.google_maps_link && (
+        <div className="text-[10px] mt-2 border-t border-dashed pt-2">
+          <p>Delivery Address Link:</p>
+          <p className="break-all">{order.google_maps_link}</p>
+        </div>
+      )}
 
       <div className="text-[11px] mt-3 border-t border-dashed pt-2 text-center space-y-0.5">
         {shop.tin_number && <p>TIN: {shop.tin_number}</p>}

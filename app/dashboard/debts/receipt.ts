@@ -1,6 +1,7 @@
 'use client'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
+import { formatCurrencySync } from '@/app/lib/currencies' // <-- 1. USE SYNC VERSION
 
 type DebtItem = {
   product_name: string
@@ -18,11 +19,13 @@ type DebtReceipt = {
   debt_items: DebtItem[]
   last_updated: string
   shop_name?: string
+  shop_country?: string // <-- 2. ADD THIS: pass shop country from parent
 }
 
 export function downloadDebtReceipt(debt: DebtReceipt) {
   const doc = new jsPDF()
   const balance = Number(debt.total_debt_amount) - Number(debt.paid_amount)
+  const country = debt.shop_country || 'Uganda' // <-- 3. FALLBACK
   
   // Header
   doc.setFontSize(18)
@@ -38,12 +41,12 @@ export function downloadDebtReceipt(debt: DebtReceipt) {
   doc.text(`Name: ${debt.customer_name}`, 14, 54)
   doc.text(`Phone: ${debt.customer_phone}`, 14, 60)
 
-  // Items Table
+  // Items Table - 4. USE formatCurrencySync
   const items = debt.debt_items.map(item => [
     item.product_name,
     item.quantity.toString(),
-    `UGX ${Number(item.unit_price).toLocaleString()}`,
-    `UGX ${(item.quantity * item.unit_price).toLocaleString()}`
+    formatCurrencySync(Number(item.unit_price), country),
+    formatCurrencySync(item.quantity * item.unit_price, country)
   ])
 
   autoTable(doc, {
@@ -54,13 +57,13 @@ export function downloadDebtReceipt(debt: DebtReceipt) {
     headStyles: { fillColor: [30, 41, 59] }
   })
 
-  // Totals
+  // Totals - 5. USE formatCurrencySync
   const finalY = (doc as any).lastAutoTable.finalY + 10
   doc.setFontSize(11)
-  doc.text(`Total Credit: UGX ${Number(debt.total_debt_amount).toLocaleString()}`, 14, finalY)
-  doc.text(`Amount Paid: UGX ${Number(debt.paid_amount).toLocaleString()}`, 14, finalY + 7)
+  doc.text(`Total Credit: ${formatCurrencySync(Number(debt.total_debt_amount), country)}`, 14, finalY)
+  doc.text(`Amount Paid: ${formatCurrencySync(Number(debt.paid_amount), country)}`, 14, finalY + 7)
   doc.setFontSize(12)
-  doc.text(`Balance Due: UGX ${balance.toLocaleString()}`, 14, finalY + 15)
+  doc.text(`Balance Due: ${formatCurrencySync(balance, country)}`, 14, finalY + 15)
   doc.setFontSize(10)
   doc.text(`Status: ${debt.status.toUpperCase()}`, 14, finalY + 23)
 

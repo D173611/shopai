@@ -4,6 +4,17 @@ import { useState, useEffect } from 'react'
 import { createClient } from '@/app/utils/supabase/client'
 import LiveOrdersQueue, { type Order } from './LiveOrdersQueue'
 import { User } from '@supabase/supabase-js'
+import { formatCurrencySync } from '@/app/lib/currencies'
+
+const fixOrder = (o: any): Order => ({
+  ...o,
+  customer_whatsapp: o.customer_whatsapp ?? '',
+  customer_email: o.customer_email ?? '',
+  delivery_address: o.delivery_address ?? '',
+  google_maps_link: o.google_maps_link ?? '',
+  notes: o.notes ?? '',
+  fulfillment_type: o.fulfillment_type ?? 'delivery',
+})
 
 export default function OrdersClient({
   initialOrders,
@@ -12,13 +23,13 @@ export default function OrdersClient({
   initialOrders: Order[]
   user: User
 }) {
-  const [orders, setOrders] = useState<Order[]>(initialOrders)
+  const [orders, setOrders] = useState<Order[]>(initialOrders.map(fixOrder))
   const [shopId, setShopId] = useState<string | null>(null)
   const [pricePerKm, setPricePerKm] = useState<number>(1000)
   const [saving, setSaving] = useState(false)
+  const [country, setCountry] = useState<string>('Uganda')
   const supabase = createClient()
 
-  // 1. Get cashier's shop_id AND shop settings
   useEffect(() => {
     async function getShop() {
       const { data: staffMember } = await supabase
@@ -38,12 +49,19 @@ export default function OrdersClient({
           .single()
         
         if (settings) setPricePerKm(settings.price_per_km)
+
+        const { data: shop } = await supabase
+          .from('shops')
+          .select('country')
+          .eq('id', staffMember.shop_id)
+          .single()
+
+        if (shop?.country) setCountry(shop.country)
       }
     }
     getShop()
   }, [user.id, supabase])
 
-  // 2. Save price per km function
   async function savePrice() {
     if (!shopId) return
     setSaving(true)
@@ -55,7 +73,6 @@ export default function OrdersClient({
     alert('Price per KM saved!')
   }
 
-  // 3. Real-time with shop filter - FIXED: don't overwrite items
   useEffect(() => {
     if (!shopId) return
 
@@ -85,18 +102,19 @@ export default function OrdersClient({
               .single()
 
             if (fullOrder) {
+              const fixed = fixOrder(fullOrder)
               const isVisible = 
-                ['pending', 'processing'].includes(fullOrder.order_status) &&
-                (!fullOrder.locked_by_cashier_id || fullOrder.locked_by_cashier_id === user.id)
+                ['pending', 'processing'].includes(fixed.order_status) &&
+                (!fixed.locked_by_cashier_id || fixed.locked_by_cashier_id === user.id)
               
               if (isVisible) {
-                setOrders(current => [fullOrder as Order, ...current])
+                setOrders(current => [fixed, ...current])
               }
             }
           }
 
           if (payload.eventType === 'UPDATE') {
-            const updatedOrder = payload.new as Order
+            const updatedOrder = fixOrder(payload.new)
             setOrders(current =>
               current.map(order => {
                 if (order.id !== updatedOrder.id) return order
@@ -107,7 +125,7 @@ export default function OrdersClient({
                 
                 if (!stillVisible) return null
                 
-                return { ...order, ...updatedOrder } as Order // FIXED: removed items: order.items
+                return { ...order, ...updatedOrder } as Order
               }).filter(Boolean) as Order[]
             )
           }
@@ -125,12 +143,10 @@ export default function OrdersClient({
 
   return (
     <div className="min-h-screen p-6 space-y-6">
-      
-      {/* PRICE SETTING BOX ON TOP */}
       <div className="bg-white/95 backdrop-blur-xl p-4 rounded-xl shadow-xl border-white/50">
         <h2 className="font-bold text-slate-800">🚚 Delivery Settings</h2>
         <div className="flex items-center gap-3 mt-2">
-          <label className="text-sm font-medium text-slate-600">Price per KM UGX:</label>
+          <label className="text-sm font-medium text-slate-600">Price per KM {formatCurrencySync(0, country).replace('0','').trim()}:</label>
           <input 
             type="number" 
             value={pricePerKm}
@@ -158,7 +174,7 @@ export default function OrdersClient({
         </div>
       </header>
 
-      <LiveOrdersQueue serverOrders={orders} currentUser={user} />
+      <LiveOrdersQueue serverOrders={orders} currentUser={user} country={country} />
     </div>
   )
 }
